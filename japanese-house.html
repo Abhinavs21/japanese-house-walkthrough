@@ -279,7 +279,7 @@ const LV = {
 const HOUSE = { x0: -9.0, x1: 9.0, z0: -6.0, z1: 6.5, livingGlassZ: 6.2 };
 const COURT = { x0: -3.0, x1: 1.8, z0: -2.2, z1: 2.5 };
 const SITE = { x0: -12.0, x1: 12.0, z0: -8.0, z1: 12.0, wallH: 2.2 };
-const STAIR = { x0: 7.35, x1: 8.7, zBottom: 3.4, zTop: -1.8, n: 15, rise: 3.2 / 15, tread: 0.09 };
+const STAIR = { x0: 7.35, x1: 8.7, zBottom: 3.0, zTop: -1.8, n: 15, rise: 3.2 / 15, tread: 0.09 };
 // Render layers (every mesh lives on exactly one; cameras pick theirs)
 const LAYER = { EXTERIOR: 1, GROUND_FLOOR: 2, FIRST_FLOOR: 3, GARAGE: 4, GLASS: 5, SKY: 6, WATER: 7 };
 // Rooms: classification boxes (also the parallax boxes of each room's reflection / irradiance probe)
@@ -2124,7 +2124,7 @@ function buildLuminaires() {
   addLight({ type: 1, pos: [-5.2, 4.6, -1.9], kelvin: 2400, lm: 0.45, size: 0.15 });
   downlight(-7.0, C1, 3.4, 1.0); downlight(-7.0, C1, 5.4, 1.0);
   downlight(-1.6, C1, 4.5, 1.0); downlight(0.6, C1, 4.5, 1.0);
-  addLight({ type: 1, pos: [8.1, 0.45, 4.7], kelvin: 1900, lm: 1.4, size: 0.3, group: 2, gate: [1.8, -0.3, 0.8, 8.7, 6.3, 6.2] });  // hearth
+  addLight({ type: 1, pos: [8.1, 0.45, 5.1], kelvin: 1900, lm: 1.4, size: 0.3, group: 2, gate: [1.8, -0.3, 0.8, 8.7, 6.3, 6.2] });  // hearth
 }
 
 // ---- furniture helpers (world-space placement; every piece is bucketed with its room's material variant)
@@ -2213,17 +2213,17 @@ function buildInteriors() {
   for (let x = 1.86; x < 8.66; x += 0.085) bx('hinokiUV', x, LV.LIVING_CEIL - 0.07, 0.86, x + 0.035, LV.LIVING_CEIL - 0.005, 6.14, { room: 'living', cast: false });
   bx('emissiveWarm', 1.82, LV.LIVING_CEIL - 0.004, 0.82, 8.68, LV.LIVING_CEIL, 0.86, { room: 'living', cast: false, receive: false });
   // board-formed concrete chimney breast with a recessed blackened-steel fireplace
-  const ch = { x0: 7.95, x1: 8.7, z0: 3.6, z1: 5.8 };
-  bx('board', ch.x0, 0, ch.z0, ch.x1, LV.LIVING_CEIL, 4.25, { room: 'living', vertical: true });
-  bx('board', ch.x0, 0, 5.15, ch.x1, LV.LIVING_CEIL, ch.z1, { room: 'living', vertical: true });
-  bx('board', ch.x0, 0, 4.25, ch.x1, 0.38, 5.15, { room: 'living', vertical: true });
-  bx('board', ch.x0, 1.02, 4.25, ch.x1, LV.LIVING_CEIL, 5.15, { room: 'living', vertical: true });
-  bx('blackSteel', 8.3, 0.38, 4.25, 8.7, 1.02, 5.15, { room: 'living' });
-  bx('blackSteel', 7.95, 0.38, 4.25, 8.3, 0.4, 5.15, { room: 'living' });
-  bx('basalt', 7.25, 0, 3.75, 7.95, 0.14, 5.65, { room: 'living' });
-  for (let i = 0; i < 3; i++) { const lg = cylGeo(0.055, 0.06, 0.62, 10); place(lg, 8.13 + i * 0.03, 0.47 + i * 0.07, 4.7 + (i - 1) * 0.06, 0.35 * (i - 1), 0, Math.PI / 2); addGeo('bark', lg, { room: 'living' }); }
-  DYN.fire = { x: 8.12, y: 0.42, z: 4.7 };
-  WALLS.push({ x0: 7.25, z0: 3.6, x1: 8.7, z1: 5.8, y0: 0, y1: 6 });
+  const ch = { x0: 7.95, x1: 8.7, z0: 4.1, z1: 6.05 }, fo0 = 4.65, fo1 = 5.55;
+  bx('board', ch.x0, 0, ch.z0, ch.x1, LV.LIVING_CEIL, fo0, { room: 'living', vertical: true });
+  bx('board', ch.x0, 0, fo1, ch.x1, LV.LIVING_CEIL, ch.z1, { room: 'living', vertical: true });
+  bx('board', ch.x0, 0, fo0, ch.x1, 0.38, fo1, { room: 'living', vertical: true });
+  bx('board', ch.x0, 1.02, fo0, ch.x1, LV.LIVING_CEIL, fo1, { room: 'living', vertical: true });
+  bx('blackSteel', 8.3, 0.38, fo0, 8.7, 1.02, fo1, { room: 'living' });
+  bx('blackSteel', 7.95, 0.38, fo0, 8.3, 0.4, fo1, { room: 'living' });
+  bx('basalt', 7.25, 0, 4.25, 7.95, 0.14, 5.95, { room: 'living' });
+  for (let i = 0; i < 3; i++) { const lg = cylGeo(0.055, 0.06, 0.62, 10); place(lg, 8.13 + i * 0.03, 0.47 + i * 0.07, 5.1 + (i - 1) * 0.06, 0.35 * (i - 1), 0, Math.PI / 2); addGeo('bark', lg, { room: 'living' }); }
+  DYN.fire = { x: 8.12, y: 0.42, z: 5.1 };
+  WALLS.push({ x0: 7.25, z0: 4.1, x1: 8.7, z1: 6.05, y0: 0, y1: 6 });
   // sunken conversation pit: hinoki step edge, L-shaped oat boucle sectional, low smoked-oak table, jute rug
   const pit = { x0: 3.2, x1: 7.0, z0: 2.4, z1: 5.4 }, PY = LV.PIT;
   bx('jute', 3.9, PY, 3.0, 6.7, PY + 0.012, 5.15, { room: 'living', cast: false });
@@ -2302,7 +2302,7 @@ function buildInteriors() {
     bx('hinokiUV', S.x0, y - S.tread, z0, S.x1, y, z1, { room: 'living', layer: LAYER.GROUND_FLOOR });
     bx('emissiveWarm', S.x0 + 0.06, y - S.tread - 0.002, z0 + 0.08, S.x1 - 0.05, y - S.tread, z0 + 0.1, { room: 'living', cast: false, receive: false });
   }
-  addLight({ type: 3, pos: [8.0, 0.3, 3.3], ext: [0, 2.9, -5.0], dir: [0, -1, 0], cone: 0.15, kelvin: 2700, lm: 0.5, size: 0.15, gate: [1.8, -0.3, -2.0, 8.7, 6.3, 6.2] });
+  addLight({ type: 3, pos: [8.0, 0.3, 2.9], ext: [0, 2.9, -4.6], dir: [0, -1, 0], cone: 0.15, kelvin: 2700, lm: 0.5, size: 0.15, gate: [1.8, -0.3, -2.0, 8.7, 6.3, 6.2] });
   // glass balustrade following the flight, bronze handrail
   for (let i = 0; i < 5; i++) {
     const za = S.zBottom - i * 1.04, zb = za - 1.04, ya = i * 1.04 / g * S.rise, yb = (i + 1) * 1.04 / g * S.rise;
@@ -3341,13 +3341,13 @@ const SHOTS = [
   { en: 'Genkan & Courtyard Sightline', jp: '玄関から坪庭へ', dur: 9, fov: 50, fStop: 8, act: (t) => { if (t > 0.02 && DYN.frontDoor) DYN.frontDoor.target = 1; },
     keys: [{ t: 0, p: [-0.35, 1.45, 8.6], l: [-0.4, 1.6, 2.0] }, { t: 0.45, p: [-0.4, 1.5, 5.6], l: [-0.5, 2.0, 0.6] }, { t: 1, p: [-0.45, 1.58, 3.1], l: [-0.5, 2.8, 0.3] }] },
   { en: 'Double-Height Living Sanctuary', jp: '吹き抜けの居間', dur: 11, fov: 52, fStop: 8,
-    keys: [{ t: 0, p: [4.0, 0.55, 4.9], l: [8.2, 0.75, 4.7] }, { t: 0.45, p: [3.4, 2.1, 5.6], l: [7.6, 2.6, 3.2] }, { t: 1, p: [2.9, 4.4, 5.85], l: [6.2, 5.7, 2.6] }] },
+    keys: [{ t: 0, p: [4.0, 0.55, 5.0], l: [8.2, 0.75, 5.1] }, { t: 0.45, p: [3.4, 2.1, 5.6], l: [7.6, 2.6, 3.2] }, { t: 1, p: [2.9, 4.4, 5.85], l: [6.2, 5.7, 2.6] }] },
   { en: 'Monolithic Kitchen & Hinoki Dining', jp: '台所と檜の食卓', dur: 10, fov: 44, fStop: 4,
     keys: [{ t: 0, p: [2.5, 1.25, -1.75], l: [3.4, 0.95, -3.6] }, { t: 1, p: [6.9, 1.25, -1.75], l: [7.6, 0.95, -3.6] }] },
   { en: 'Tsubo-niwa · The Open Heart', jp: '坪庭、家の心', dur: 11, fov: 50, fStop: 4,
     keys: orbitKeys(0.2, 1.0, -0.3, 1.35, -0.6, 2.0, 0.85, 1.35, 0.9) },
   { en: 'Cantilevered Timber Ascent', jp: '浮き階段', dur: 10, fov: 50, fStop: 8,
-    keys: [{ t: 0, p: [6.6, 1.55, 5.4], l: [8.0, 1.4, 2.0] }, { t: 0.5, p: [7.4, 2.7, 2.4], l: [8.0, 3.6, -0.6] }, { t: 1, p: [7.6, 4.85, -0.9], l: [5.5, 4.5, -3.6] }] },
+    keys: [{ t: 0, p: [6.5, 1.55, 4.7], l: [8.0, 1.2, 1.6] }, { t: 0.5, p: [7.5, 2.75, 2.0], l: [8.0, 3.7, -0.8] }, { t: 1, p: [7.7, 4.85, -1.1], l: [5.5, 4.5, -3.6] }] },
   { en: 'Mezzanine Gallery Bridge', jp: '中二階の回廊', dur: 9, fov: 52, fStop: 8,
     keys: [{ t: 0, p: [6.7, 4.95, 0.35], l: [1.6, 1.2, 3.2] }, { t: 1, p: [6.2, 4.9, 0.45], l: [0.2, 2.6, 0.6] }] },
   { en: 'Washitsu & Yukimi-Shoji', jp: '和室と雪見障子', dur: 10, fov: 54, fStop: 5.6, act: (t) => { P.shojiOpen = t > 0.18; },
@@ -3484,7 +3484,7 @@ function updateAudio(dt) {
   set('wind', wind * 0.22); set('leaves', wind * 0.06); set('rain', SH.uRain.value * 0.25);
   const dT = DYN.tsukubai ? Math.hypot(p.x - DYN.tsukubai.x, p.y - 0.6, p.z - DYN.tsukubai.z) : 99;
   set('water', 0.12 / (1 + dT * dT * 0.25));
-  const dF = Math.hypot(p.x - 8.1, p.y - 0.6, p.z - 4.7);
+  const dF = Math.hypot(p.x - 8.1, p.y - 0.6, p.z - 5.1);
   set('fire', P.hearth * SH.uHearthFlicker.value * 0.25 / (1 + dF * dF * 0.12));
   if (Math.random() < dt * 9 * P.hearth / (1 + dF * 0.6)) blip({ ff: 2500 + Math.random() * 2500, q: 3, vol: 0.05 / (1 + dF * 0.4), dur: 0.03 });
   const dB = Math.hypot(p.x + 7.6, p.y - 3.9, p.z - 5.2);
@@ -3688,7 +3688,7 @@ function inRect(x, z, x0, z0, x1, z1) { return x >= x0 && x <= x1 && z >= z0 && 
 function floorCandidates(x, z) {
   const c = [];
   const S = STAIR, g = (S.zBottom - S.zTop) / S.n;
-  if (x >= S.x0 - 0.02 && x <= S.x1 && z <= S.zBottom + 0.02 && z >= S.zTop) { const i = clamp(Math.floor((S.zBottom - z) / g), 0, S.n - 1); c.push((i + 1) * S.rise); }
+  if (x >= S.x0 - 0.02 && x <= S.x1 && z <= S.zBottom + 0.25 && z >= S.zTop) c.push(clamp((S.zBottom + 0.17 - z) / g, 0, S.n) * S.rise);   // nosing line: a continuous ramp
   const inH = inRect(x, z, HOUSE.x0 + 0.2, HOUSE.z0 + 0.15, HOUSE.x1 - 0.3, 6.45) || inRect(x, z, 1.8, 6.2, 8.7, 6.2);
   if (inRect(x, z, -8.75, -0.5, -3.0, 6.45)) c.push(LV.GARAGE);
   else if (inRect(x, z, -3.0, 3.66, 0.45, 6.45)) c.push(LV.GENKAN);
@@ -3772,7 +3772,9 @@ function updateWalk(dt) {
   WALK.hy = (WALK.hy || 0) + (WALK.vy || 0) * dt; WALK.vy = (WALK.vy || 0) - 9.8 * dt; if (WALK.hy <= 0) { WALK.hy = 0; WALK.vy = 0; }
   // critically damped vertical follow (stairs, pit, genkan) with bounded acceleration
   const target = WALK.y + WALK.eyeCur + WALK.hy;
-  const w = 11, acc = clamp(w * w * (target - WALK.camY) - 2 * w * WALK.camV, -14, 14);
+  const hopping = WALK.hy > 0;
+  const w = 6.5, acc = hopping ? (target - WALK.camY) * 400 - WALK.camV * 40 : clamp(w * w * (target - WALK.camY) - 2 * w * WALK.camV, -3.2, 3.2);
+  WALK.acc = acc; if (!hopping) WALK.maxAcc = Math.max(WALK.maxAcc || 0, Math.abs(acc));
   WALK.camV += acc * dt; WALK.camY += WALK.camV * dt;
   if (Math.abs(target - WALK.camY) > 1.5) { WALK.camY = target; WALK.camV = 0; }
   const bob = ml > 0 ? Math.sin((WALK.stepT || 0) / 0.7 * Math.PI * 2) * 0.012 : 0;
