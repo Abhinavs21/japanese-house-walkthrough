@@ -308,7 +308,7 @@ function roomAt(x, y, z, pad = 0.0) {
 }
 // Weather / season presets (cross-faded over 3 s). dec = solar declination (season), deg.
 const WX_PRESETS = {
-  'Golden Hour': { tod: 16.8, az: 235, dec: -5, cloud: 0.35, turb: 2.4, overcast: 0, sunMul: 1, hemiMul: 1, fog: 0.003, fogCol: [0.58, 0.52, 0.46], wind: 0.3, rain: 0, wet: 0, snow: 0, snowCover: 0, interior: 0.65, garage: 0.8, hearth: 1.0, steam: 1, exposure: 0.95, grade: [1.05, 1.0, 0.94], autumn: 0.15 },
+  'Golden Hour': { tod: 16.8, az: 235, dec: -5, cloud: 0.35, turb: 2.4, overcast: 0, sunMul: 1, hemiMul: 1, fog: 0.003, fogCol: [0.58, 0.52, 0.46], wind: 0.3, rain: 0, wet: 0, snow: 0, snowCover: 0, interior: 0.65, garage: 0.8, hearth: 1.0, steam: 1, exposure: 0.95, grade: [1.03, 1.0, 0.965], autumn: 0.15 },
   'Clear Noon': { tod: 12.3, az: 170, dec: 5, cloud: 0.2, turb: 1.8, overcast: 0, sunMul: 1, hemiMul: 1, fog: 0.002, fogCol: [0.62, 0.68, 0.75], wind: 0.25, rain: 0, wet: 0, snow: 0, snowCover: 0, interior: 0.15, garage: 0.6, hearth: 0.6, steam: 0.7, exposure: 0.85, grade: [1.0, 1.0, 1.0], autumn: 0 },
   'Kyoto Rain & Dusk': { tod: 18.1, az: 250, dec: 0, cloud: 1.0, turb: 6, overcast: 0.88, sunMul: 0.08, hemiMul: 1.8, fog: 0.016, fogCol: [0.14, 0.18, 0.24], wind: 0.5, rain: 1, wet: 1, snow: 0, snowCover: 0, interior: 1.0, garage: 1.0, hearth: 1.15, steam: 1.3, exposure: 1.15, grade: [0.96, 1.0, 1.05], autumn: 0.1 },
   'Winter Snow & Twilight': { tod: 17.2, az: 240, dec: -20, cloud: 0.9, turb: 3, overcast: 0.65, sunMul: 0.25, hemiMul: 1.7, fog: 0.018, fogCol: [0.48, 0.54, 0.64], wind: 0.2, rain: 0, wet: 0, snow: 1, snowCover: 1, interior: 1.0, garage: 0.9, hearth: 1.4, steam: 2.0, exposure: 1.1, grade: [0.97, 1.0, 1.04], autumn: 0.75 },
@@ -409,6 +409,9 @@ function kelvinToRGB(k) {   // Tanner Helland fit, returns sRGB 0..1
 }
 const _kc = new THREE.Color();
 function kelvinColor(k, out = new THREE.Color()) { const [r, g, b] = kelvinToRGB(k); return out.setRGB(r, g, b, THREE.SRGBColorSpace); }
+// as a camera white-balanced near 3800 K would record it: warm sources stay warm without going amber
+function photoKelvin(k, out = new THREE.Color(), amount = 0.55) { kelvinColor(k, out); const w = kelvinColor(3800, _kc2); return out.setRGB(lerp(1, out.r / w.r, amount), lerp(1, out.g / w.g, amount), lerp(1, out.b / w.b, amount)); }
+const _kc2 = new THREE.Color();
 
 /* ------------------------------------------------------------------ 2. PROCEDURAL PBR TEXTURES (TEX.*)
    Every surface map is synthesised on the GPU at load: a periodic surf() function per material returns
@@ -929,7 +932,12 @@ function archBox(x0, y0, z0, x1, y1, z1, mat, o = {}) {
 }
 // Wall slab along X (thickness z0..z1) or along Z (thickness x0..x1) with rectangular openings.
 // holes: [{a0, a1, b0, b1}] with a along the wall length and b the height range.
+function wallPiece(x0, y0, z0, x1, y1, z1, mat, o) {
+  archBox(x0, y0, z0, x1, y1, z1, mat, o);
+  if (o.collide !== false && typeof WALLS !== 'undefined') WALLS.push({ x0: Math.min(x0, x1), z0: Math.min(z0, z1), x1: Math.max(x0, x1), z1: Math.max(z0, z1), y0: Math.min(y0, y1), y1: Math.max(y0, y1) });
+}
 function wallX(x0, x1, z0, z1, y0, y1, holes, mat, o = {}) {
+  const archBox = wallPiece;
   const hs = (holes || []).slice().sort((p, q) => p.a0 - q.a0);
   let a = x0;
   for (const h of hs) {
@@ -941,6 +949,7 @@ function wallX(x0, x1, z0, z1, y0, y1, holes, mat, o = {}) {
   if (x1 > a) archBox(a, y0, z0, x1, y1, z1, mat, o);
 }
 function wallZ(z0, z1, x0, x1, y0, y1, holes, mat, o = {}) {
+  const archBox = wallPiece;
   const hs = (holes || []).slice().sort((p, q) => p.a0 - q.a0);
   let a = z0;
   for (const h of hs) {
@@ -1213,7 +1222,7 @@ function updateSun() {
   const K = lerp(2300, 5800, smoothstep(0 * DEG, 45 * DEG, elev));
   const sunMul = WX.cur ? WX.cur.sunMul : 1;
   const inten = 4.0 * smoothstep(-1.5 * DEG, 9 * DEG, elev) * (0.82 + 0.18 * smoothstep(10 * DEG, 45 * DEG, elev)) * sunMul;
-  kelvinColor(K, sun.color);
+  photoKelvin(K, sun.color, 0.8);
   sun.intensity = inten;
   SH.uSunDir.value.copy(d);
   SH.uSunColor.value.copy(sun.color).multiplyScalar(inten);
@@ -1298,17 +1307,17 @@ const LIGHTS = [];
 function addLight(o) {
   const L = Object.assign({ type: 0, pos: [0, 2.9, 0], kelvin: 2700, lm: 1, size: 0.05, dir: [0, -1, 0], cone: 0.62, ext: [0, 0, 0], group: 0, gate: null, on: 1 }, o);
   if (!L.gate) { const r = roomAt(L.pos[0], L.pos[1] - 0.3, L.pos[2]); L.gate = r.box ? r.box.slice() : [-50, -5, -50, 50, 50, 50]; }
-  L.col = kelvinColor(L.kelvin);
+  L.col = photoKelvin(L.kelvin);
   LIGHTS.push(L); return L;
 }
 const GROUP_LEVEL = [0, 0, 0, 0, 1];
 function packLights() {
   const n = Math.min(LIGHTS.length, AL_MAX);
   SH.uALCount.value = n;
-  const tint = kelvinColor(P.colorTemp, _kc);
+  const tint = photoKelvin(P.colorTemp, _kc);
   for (let i = 0; i < n; i++) {
     const L = LIGHTS[i], lev = GROUP_LEVEL[L.group] * L.on;
-    const c = L.group === 0 ? _v3.set(L.col.r * tint.r / 0.98, L.col.g * tint.g / 0.86, L.col.b * tint.b / 0.73) : _v3.set(L.col.r, L.col.g, L.col.b);
+    const c = (L.group === 0 && L.kelvin <= 3000) ? _v3.set(tint.r, tint.g, tint.b) : _v3.set(L.col.r, L.col.g, L.col.b);
     SH.uALpos.value[i].set(L.pos[0], L.pos[1], L.pos[2], L.type);
     SH.uALcol.value[i].set(c.x * L.lm * lev, c.y * L.lm * lev, c.z * L.lm * lev, L.size);
     SH.uALdir.value[i].set(L.dir[0], L.dir[1], L.dir[2], L.cone);
@@ -1753,7 +1762,8 @@ const MAT = {
     const key = name + '|' + room;
     let m = this.cache.get(key);
     if (m) return m;
-    const d = MATDEF[name];
+    const remap = name === 'plaster' && room !== 'washitsu' ? 'shikkui' : name;
+    const d = MATDEF[remap];
     if (!d) throw new Error('Unknown material ' + name);
     const ext = room === 'ext' || room === 'court';
     m = new THREE.MeshPhysicalMaterial(Object.assign({ color: 0xffffff, roughness: 0.5, metalness: 0, envMapIntensity: 1 }, d.params || {}));
@@ -1769,7 +1779,7 @@ const MAT = {
 // Emissive fixtures dimmed with their light group
 const EMISSIVE = [];
 function emissiveMat(kelvin, intensity, group = 0) {
-  const m = new THREE.MeshBasicMaterial({ color: kelvinColor(kelvin) });
+  const m = new THREE.MeshBasicMaterial({ color: photoKelvin(kelvin, new THREE.Color(), 0.5) });
   m.userData.base = m.color.clone(); m.userData.intensity = intensity; m.userData.group = group;
   m.toneMapped = false;
   EMISSIVE.push(m);
@@ -2063,6 +2073,286 @@ function buildLuminaires() {
   downlight(-7.0, C1, 3.4, 1.0); downlight(-7.0, C1, 5.4, 1.0);
   downlight(-1.6, C1, 4.5, 1.0); downlight(0.6, C1, 4.5, 1.0);
   addLight({ type: 1, pos: [8.1, 0.45, 4.7], kelvin: 1900, lm: 1.4, size: 0.3, group: 2, gate: [1.8, -0.3, 0.8, 8.7, 6.3, 6.2] });  // hearth
+}
+
+// ---- furniture helpers (world-space placement; every piece is bucketed with its room's material variant)
+function rb(mat, w, h, d, r, x, y, z, ry = 0, o = {}) { const g = roundedBox(w, h, d, r, o.seg || 3); place(g, x, y + h / 2, z, ry, o.rx || 0, o.rz || 0); return addGeo(mat, g, o); }
+function cush(mat, w, h, d, r, x, y, z, ry = 0, bulge = 0.22, o = {}) { const g = cushionGeo(w, h, d, r, bulge, 5); place(g, x, y + h / 2, z, ry, o.rx || 0, o.rz || 0); return addGeo(mat, g, o); }
+function cyl(mat, r0, r1, h, x, y, z, seg = 24, o = {}) { const g = cylGeo(r0, r1, h, seg); place(g, x, y + h / 2, z, o.ry || 0, o.rx || 0, o.rz || 0); return addGeo(mat, g, o); }
+function bx(mat, x0, y0, z0, x1, y1, z1, o = {}) { archBox(x0, y0, z0, x1, y1, z1, mat, Object.assign({ grain: true }, o)); }
+function lathe(mat, prof, x, y, z, seg = 32, o = {}) { const g = latheGeo(prof, seg); place(g, x, y, z, o.ry || 0, 0, 0, o.s || 1); return addGeo(mat, g, o); }
+const DYN = {};   // animated pieces: doors, shoji, louvres, garage door, car
+function dynMesh(geo, matName, room, parent = scene, o = {}) {
+  const m = new THREE.Mesh(geo, typeof matName === 'string' ? MAT.get(matName, room) : matName);
+  m.castShadow = o.cast !== false; m.receiveShadow = true;
+  m.layers.set(o.layer || (ROOM[room] ? ROOM[room].layer : LAYER.EXTERIOR));
+  parent.add(m); return m;
+}
+function chair(x, z, ry, room, mat = 'smokedOak', seatMat = 'linenFlax') {
+  // sculptural timber dining chair: splayed tapered legs, thin seat, curved back rail
+  const g = new THREE.Group();
+  const legs = [[-0.2, -0.19], [0.2, -0.19], [-0.2, 0.19], [0.2, 0.19]];
+  const parts = [];
+  for (const [lx, lz] of legs) { const c = cylGeo(0.016, 0.022, 0.45, 10); place(c, lx, 0.225, lz, 0, lz * 0.25, -lx * 0.25); parts.push(c); }
+  const seat = roundedBox(0.46, 0.035, 0.44, 0.012, 2); place(seat, 0, 0.46, 0); parts.push(seat);
+  for (const lx of [-0.19, 0.19]) { const c = cylGeo(0.014, 0.016, 0.36, 8); place(c, lx, 0.65, 0.2, 0, -0.18, 0); parts.push(c); }
+  const back = new THREE.TorusGeometry(0.24, 0.022, 8, 24, Math.PI * 0.62); back.rotateX(Math.PI / 2); back.rotateY(Math.PI * 0.69 - Math.PI / 2 + Math.PI); place(back, 0, 0.82, 0.02);
+  parts.push(back);
+  const pad = cushionGeo(0.42, 0.03, 0.4, 0.012, 0.25); place(pad, 0, 0.495, 0);
+  for (const p of parts) { place(p, x, 0, z, ry); addGeo(mat, p, { room }); }
+  place(pad, x, 0, z, ry); addGeo(seatMat, pad, { room });
+}
+function books(x0, x1, y, z0, depth, room, axis = 'x', seed = 1) {
+  // a run of books standing on a shelf, varied heights, spines facing +z (axis x) or +x (axis z)
+  const r = mulberry32(seed); let a = x0; const cols = ['paintWhite', 'linenFlax', 'leather', 'walnut', 'paintBlack', 'linen'];
+  while (a < x1 - 0.05) {
+    const t = 0.018 + r() * 0.03, h = 0.18 + r() * 0.12, d = depth * (0.75 + r() * 0.2);
+    if (r() < 0.12) { a += 0.04 + r() * 0.08; continue; }
+    const m = cols[Math.floor(r() * cols.length)];
+    if (axis === 'x') bx(m, a, y, z0, a + t, y + h, z0 + d, { room }); else bx(m, z0, y, a, z0 + d, y + h, a + t, { room });
+    a += t + 0.002;
+  }
+}
+function buildInteriors() {
+  const GF = 0, F1 = LV.F1;
+  /* ---------- GARAGE ---------- */
+  // fluted, matte-charcoal oak storage wall on the west side with helmet niches
+  for (let z = -0.35; z < 6.3; z += 0.06) cyl('smokedOak', 0.028, 0.028, 2.6, -8.72, LV.GARAGE, z, 10, { room: 'garage' });
+  bx('smokedOak', -8.75, LV.GARAGE, -0.45, -8.7, LV.GARAGE + 2.6, 6.4, { room: 'garage' });
+  for (const z of [1.2, 3.0, 4.8]) {
+    bx('blackSteel', -8.68, 1.35, z - 0.6, -8.35, 1.38, z + 0.6, { room: 'garage' });
+    for (const dz of [-0.35, 0.35]) { const s = new THREE.SphereGeometry(0.15, 24, 16, 0, Math.PI * 2, 0, Math.PI * 0.62); place(s, -8.52, 1.38 + 0.08, z + dz); addGeo(dz < 0 ? 'paintWhite' : 'lacquer', s, { room: 'garage' }); }
+  }
+  // EV charger on the north wall: glass-front unit, coiled cable
+  bx('blackSteel', -4.3, 0.95, -0.5, -3.75, 1.65, -0.38, { room: 'garage' });
+  bx('glass', -4.27, 0.98, -0.379, -3.78, 1.62, -0.37, { room: 'garage', cast: false });
+  { const tor = new THREE.TorusGeometry(0.16, 0.018, 8, 40); place(tor, -4.02, 0.72, -0.4); addGeo('rubber', tor, { room: 'garage' }); }
+  // stainless linear drain near the door + LED floor grazers along the walls
+  bx('steel', -8.4, LV.GARAGE - 0.002, 5.85, -3.6, LV.GARAGE + 0.002, 5.93, { room: 'garage' });
+  bx('emissiveGarage', -8.66, LV.GARAGE, -0.45, -8.64, LV.GARAGE + 0.015, 6.4, { cast: false, receive: false, room: 'garage' });
+  // sectional cedar + frosted glass overhead door (animated along curved ceiling tracks)
+  DYN.garageDoor = { panels: [], open: 0, target: 0, speed: 1 / 3.2 };
+  for (let i = 0; i < 5; i++) {
+    const grp = new THREE.Group();
+    const h = 0.53;
+    dynMesh(boxGeo(4.8, 0.06, 0.045), 'cedarUV', 'ext', grp).position.set(0, -h / 2 + 0.03, 0);
+    dynMesh(boxGeo(4.8, 0.06, 0.045), 'cedarUV', 'ext', grp).position.set(0, h / 2 - 0.03, 0);
+    for (const sx of [-2.37, -1.2, 0, 1.2, 2.37]) dynMesh(boxGeo(0.06, h, 0.045), 'cedarUV', 'ext', grp).position.set(sx, 0, 0);
+    for (const cx of [-1.785, -0.6, 0.6, 1.785]) { const gm = dynMesh(boxGeo(1.11, h - 0.12, 0.012), 'glassFrosted', 'ext', grp, { cast: true }); gm.position.set(cx, 0, 0); gm.renderOrder = 2; }
+    scene.add(grp); setLayer(grp, LAYER.EXTERIOR);
+    DYN.garageDoor.panels.push(grp);
+  }
+  for (const x of [-8.45, -3.55]) { bx('blackSteel', x - 0.02, LV.GARAGE, 6.38, x + 0.02, 2.62, 6.42, { room: 'garage' }); bx('blackSteel', x - 0.02, 2.62, 3.4, x + 0.02, 2.66, 6.42, { room: 'garage' }); }
+  /* ---------- GENKAN ---------- */
+  // floating walnut shoe cabinet with a warm LED wash under it
+  bx('walnutTri', -2.9, 0.28, 6.03, -1.25, 1.12, 6.45, { room: 'genkan' });
+  bx('emissiveWarm', -2.88, 0.27, 6.05, -1.27, 0.275, 6.42, { room: 'genkan', cast: false, receive: false });
+  lathe('bizen', [[0, 0], [0.07, 0.01], [0.085, 0.08], [0.06, 0.2], [0.03, 0.27], [0.035, 0.3], [0, 0.3]], -1.75, 1.12, 6.25, 24, { room: 'genkan' });
+  // tall pivot cedar door with a vertical bronze pull
+  { const g = new THREE.Group(); g.position.set(-0.9, LV.GENKAN, 6.6);
+    dynMesh(boxGeo(1.18, 2.9, 0.07), 'cedarUV', 'genkan', g).position.set(0.59, 1.45, 0);
+    const pull = dynMesh(cylGeo(0.014, 0.014, 0.9, 12), 'bronze', 'genkan', g); pull.position.set(1.0, 1.25, 0.075);
+    const pull2 = pull.clone(); pull2.position.z = -0.075; g.add(pull2);
+    scene.add(g); setLayer(g, LAYER.GROUND_FLOOR); DYN.frontDoor = { g, open: 0, target: 0 }; }
+  // hall console and a framed sumi-e
+  bx('walnutTri', 1.2, 0.0, 5.95, 1.78, 0.78, 6.4, { room: 'genkan' });
+  /* ---------- LIVING PAVILION ---------- */
+  // hinoki acoustic slat ceiling under the 6.3 m soffit, glowing cove at the perimeter
+  for (let x = 1.86; x < 8.66; x += 0.085) bx('hinokiUV', x, LV.LIVING_CEIL - 0.07, 0.86, x + 0.035, LV.LIVING_CEIL - 0.005, 6.14, { room: 'living', cast: false });
+  bx('emissiveWarm', 1.82, LV.LIVING_CEIL - 0.004, 0.82, 8.68, LV.LIVING_CEIL, 0.86, { room: 'living', cast: false, receive: false });
+  // board-formed concrete chimney breast with a recessed blackened-steel fireplace
+  const ch = { x0: 7.95, x1: 8.7, z0: 3.6, z1: 5.8 };
+  bx('board', ch.x0, 0, ch.z0, ch.x1, LV.LIVING_CEIL, 4.25, { room: 'living', vertical: true });
+  bx('board', ch.x0, 0, 5.15, ch.x1, LV.LIVING_CEIL, ch.z1, { room: 'living', vertical: true });
+  bx('board', ch.x0, 0, 4.25, ch.x1, 0.38, 5.15, { room: 'living', vertical: true });
+  bx('board', ch.x0, 1.02, 4.25, ch.x1, LV.LIVING_CEIL, 5.15, { room: 'living', vertical: true });
+  bx('blackSteel', 8.3, 0.38, 4.25, 8.7, 1.02, 5.15, { room: 'living' });
+  bx('blackSteel', 7.95, 0.38, 4.25, 8.3, 0.4, 5.15, { room: 'living' });
+  bx('basalt', 7.25, 0, 3.75, 7.95, 0.14, 5.65, { room: 'living' });
+  for (let i = 0; i < 3; i++) { const lg = cylGeo(0.055, 0.06, 0.62, 10); place(lg, 8.13 + i * 0.03, 0.47 + i * 0.07, 4.7 + (i - 1) * 0.06, 0.35 * (i - 1), 0, Math.PI / 2); addGeo('bark', lg, { room: 'living' }); }
+  DYN.fire = { x: 8.12, y: 0.42, z: 4.7 };
+  WALLS.push({ x0: 7.25, z0: 3.6, x1: 8.7, z1: 5.8, y0: 0, y1: 6 });
+  // sunken conversation pit: hinoki step edge, L-shaped oat boucle sectional, low smoked-oak table, jute rug
+  const pit = { x0: 3.2, x1: 7.0, z0: 2.4, z1: 5.4 }, PY = LV.PIT;
+  bx('jute', 3.9, PY, 3.0, 6.7, PY + 0.012, 5.15, { room: 'living', cast: false });
+  // sofa back run along the north edge of the pit (faces south to the pool) and the west edge (faces east to the hearth)
+  rb('boucle', 3.4, 0.34, 0.95, 0.06, 5.0, PY, 2.88, 0, { room: 'living', seg: 3 });               // north base
+  rb('boucle', 0.95, 0.34, 2.0, 0.06, 3.68, PY, 4.35, 0, { room: 'living', seg: 3 });              // west base
+  rb('boucle', 3.6, 0.42, 0.22, 0.08, 4.9, PY + 0.3, 2.5, 0, { room: 'living', seg: 3 });          // north back
+  rb('boucle', 0.22, 0.42, 2.6, 0.08, 3.3, PY + 0.3, 4.05, 0, { room: 'living', seg: 3 });         // west back
+  for (let i = 0; i < 3; i++) cush('boucle', 1.04, 0.16, 0.74, 0.06, 4.05 + i * 1.08, PY + 0.33, 2.98, 0, 0.18, { room: 'living' });
+  for (let i = 0; i < 2; i++) cush('boucle', 0.74, 0.16, 0.92, 0.06, 3.76, PY + 0.33, 3.95 + i * 0.95, 0, 0.18, { room: 'living' });
+  for (const [x, z, ry] of [[4.2, 2.66, 0.08], [5.5, 2.66, -0.12], [3.48, 4.4, Math.PI / 2 + 0.1]]) cush('linenFlax', 0.5, 0.42, 0.14, 0.05, x, PY + 0.5, z, ry, 0.35, { room: 'living', rx: -0.18 });
+  rb('smokedOak', 1.6, 0.06, 0.9, 0.012, 5.35, PY + 0.3, 4.1, 0, { room: 'living' });
+  for (const [dx, dz] of [[-0.7, -0.35], [0.7, -0.35], [-0.7, 0.35], [0.7, 0.35]]) bx('smokedOak', 5.35 + dx - 0.03, PY, 4.1 + dz - 0.03, 5.35 + dx + 0.03, PY + 0.3, 4.1 + dz + 0.03, { room: 'living' });
+  // matcha set: chawan, chasen, natsume tea caddy on a tray
+  bx('lacquer', 5.0, PY + 0.36, 3.95, 5.42, PY + 0.372, 4.25, { room: 'living' });
+  lathe('ceramicWhite', [[0, 0], [0.035, 0], [0.04, 0.008], [0.062, 0.03], [0.068, 0.07], [0.064, 0.072], [0.058, 0.035], [0.03, 0.012], [0, 0.012]], 5.12, PY + 0.372, 4.1, 28, { room: 'living' });
+  lathe('bizen', [[0, 0], [0.03, 0], [0.032, 0.05], [0.028, 0.065], [0, 0.065]], 5.3, PY + 0.372, 4.18, 20, { room: 'living' });
+  cyl('bamboo', 0.018, 0.022, 0.09, 5.32, PY + 0.372, 4.02, 12, { room: 'living' });
+  // pit floor + the step-down timber edges
+  for (const [a, b, c, d] of [[pit.x0, pit.z0, pit.x1, pit.z0 + 0.04], [pit.x0, pit.z1 - 0.04, pit.x1, pit.z1], [pit.x0, pit.z0, pit.x0 + 0.04, pit.z1], [pit.x1 - 0.04, pit.z0, pit.x1, pit.z1]]) bx('hinokiUV', a, PY, b, c, 0.005, d, { room: 'living' });
+  // a tall mature olive in a raw concrete planter by the glass
+  cyl('concrete', 0.32, 0.28, 0.55, 8.1, 0, 2.2, 24, { room: 'living' });
+  /* ---------- KITCHEN & DINING ---------- */
+  // full-height walnut cabinetry along the north wall with a backlit travertine niche
+  bx('walnutTri', 2.05, 0, -5.8, 8.5, 2.1, -5.18, { room: 'kitchen', skip: ['nz'] });
+  bx('travertine', 4.6, 0.95, -5.19, 6.4, 1.55, -5.17, { room: 'kitchen' });
+  bx('emissiveWarm', 4.6, 1.548, -5.5, 6.4, 1.552, -5.2, { room: 'kitchen', cast: false, receive: false });
+  bx('walnutTri', 4.58, 0.92, -5.2, 6.42, 0.95, -5.0, { room: 'kitchen' });
+  for (let x = 2.4; x < 8.5; x += 0.6) if (x < 4.5 || x > 6.4) bx('paintBlack', x - 0.003, 0.05, -5.181, x + 0.003, 2.05, -5.176, { room: 'kitchen', cast: false });
+  // monolithic 3.8 m island: poured-concrete waterfall top + fluted walnut base, induction hob, sink, gooseneck tap
+  const isl = { x0: 3.2, x1: 7.0, z0: -3.95, z1: -2.95 };
+  bx('concrete', isl.x0, 0.86, isl.z0, isl.x1, 0.94, isl.z1, { room: 'kitchen' });
+  bx('concrete', isl.x0, 0, isl.z0, isl.x0 + 0.08, 0.86, isl.z1, { room: 'kitchen' });
+  bx('concrete', isl.x1 - 0.08, 0, isl.z0, isl.x1, 0.86, isl.z1, { room: 'kitchen' });
+  bx('walnutTri', isl.x0 + 0.08, 0.06, isl.z0 + 0.05, isl.x1 - 0.08, 0.86, isl.z1 - 0.12, { room: 'kitchen' });
+  for (let x = isl.x0 + 0.12; x < isl.x1 - 0.1; x += 0.045) cyl('walnut', 0.02, 0.02, 0.78, x, 0.07, isl.z1 - 0.11, 8, { room: 'kitchen' });
+  bx('paintBlack', isl.x0 + 0.08, 0, isl.z0 + 0.1, isl.x1 - 0.08, 0.06, isl.z1 - 0.15, { room: 'kitchen' });
+  bx('lacquer', 5.6, 0.941, -3.75, 6.4, 0.944, -3.2, { room: 'kitchen' });
+  bx('steel', 3.8, 0.9, -3.75, 4.5, 0.941, -3.3, { room: 'kitchen' });
+  { const tap = new THREE.CatmullRomCurve3([new THREE.Vector3(4.15, 0.94, -3.82), new THREE.Vector3(4.15, 1.28, -3.82), new THREE.Vector3(4.15, 1.34, -3.68), new THREE.Vector3(4.15, 1.24, -3.55)]);
+    addGeo('bronze', new THREE.TubeGeometry(tap, 24, 0.012, 10), { room: 'kitchen' }); }
+  WALLS.push({ x0: isl.x0, z0: isl.z0, x1: isl.x1, z1: isl.z1, y0: 0, y1: 0.95 });
+  // four leather barstools on the dining side
+  for (let i = 0; i < 4; i++) {
+    const x = 3.75 + i * 0.85, z = -2.62;
+    cush('leather', 0.38, 0.06, 0.34, 0.03, x, 0.7, z, 0, 0.2, { room: 'kitchen' });
+    cyl('blackSteel', 0.012, 0.012, 0.72, x, 0, z, 8, { room: 'kitchen' });
+    const ring = new THREE.TorusGeometry(0.15, 0.008, 6, 24).rotateX(Math.PI / 2); place(ring, x, 0.26, z); addGeo('blackSteel', ring, { room: 'kitchen' });
+    cyl('blackSteel', 0.17, 0.17, 0.012, x, 0, z, 24, { room: 'kitchen' });
+  }
+  // live-edge hinoki dining table for eight + sculptural chairs + linear brass & alabaster pendant
+  const tb = { x: 4.1, z: -0.8, l: 3.0, w: 1.05 };
+  { const shape = new THREE.Shape(); const n = 24;
+    for (let i = 0; i <= n; i++) { const t = i / n; shape[i ? 'lineTo' : 'moveTo'](-tb.l / 2 + t * tb.l, -tb.w / 2 + 0.035 * Math.sin(t * 9.0) + 0.02 * Math.sin(t * 23)); }
+    for (let i = n; i >= 0; i--) { const t = i / n; shape.lineTo(-tb.l / 2 + t * tb.l, tb.w / 2 + 0.04 * Math.sin(t * 7.0 + 1) + 0.018 * Math.sin(t * 19)); }
+    const g = new THREE.ExtrudeGeometry(shape, { depth: 0.06, bevelEnabled: true, bevelThickness: 0.006, bevelSize: 0.006, bevelSegments: 2 });
+    g.rotateX(-Math.PI / 2); place(g, tb.x, 0.7, tb.z); addGeo('hinokiUV', g, { room: 'kitchen' }); }
+  for (const dx of [-1.15, 1.15]) { bx('smokedOak', tb.x + dx - 0.04, 0, tb.z - 0.42, tb.x + dx + 0.04, 0.7, tb.z + 0.42, { room: 'kitchen' }); }
+  for (let i = 0; i < 3; i++) { chair(tb.x - 0.95 + i * 0.95, tb.z - 0.82, 0, 'kitchen'); chair(tb.x - 0.95 + i * 0.95, tb.z + 0.82, Math.PI, 'kitchen'); }
+  chair(tb.x - 1.85, tb.z, -Math.PI / 2, 'kitchen'); chair(tb.x + 1.85, tb.z, Math.PI / 2, 'kitchen');
+  WALLS.push({ x0: tb.x - 1.5, z0: tb.z - 0.55, x1: tb.x + 1.5, z1: tb.z + 0.55, y0: 0, y1: 0.75 });
+  bx('brass', tb.x - 1.1, 1.82, tb.z - 0.04, tb.x + 1.1, 1.86, tb.z + 0.04, { room: 'kitchen' });
+  bx('emissiveWarm', tb.x - 1.06, 1.79, tb.z - 0.03, tb.x + 1.06, 1.82, tb.z + 0.03, { room: 'kitchen', cast: false, receive: false });
+  for (const dx of [-0.9, 0.9]) cyl('brass', 0.003, 0.003, LV.GF_CEIL - 1.86, tb.x + dx, 1.86, tb.z, 6, { room: 'kitchen', cast: false });
+  // concealed full-height cabinetry under the stair run (east end)
+  bx('walnutTri', 7.35, 0, -1.8, 8.7, 2.1, 0.8, { room: 'kitchen' });
+  /* ---------- STUDY ---------- */
+  bx('oak', -2.5, 0.72, -5.8, 1.3, 0.76, -5.2, { room: 'study' });
+  for (const x of [-2.45, 1.25]) bx('oak', x - 0.02, 0, -5.78, x + 0.02, 0.72, -5.22, { room: 'study' });
+  chair(-0.6, -4.75, Math.PI, 'study', 'oak', 'leatherBlack');
+  for (let y = 0.35; y < 2.6; y += 0.4) { bx('oak', -2.98, y, -5.7, -2.66, y + 0.025, -2.6, { room: 'study' }); books(-5.6, -2.7, y + 0.025, -2.97, 0.24, 'study', 'z', Math.floor(y * 10)); }
+  /* ---------- CANTILEVERED STAIR: 15 hinoki treads pinned into the east wall, glass balustrade, LED under every tread ---------- */
+  const S = STAIR, g = (S.zBottom - S.zTop) / S.n;
+  for (let i = 0; i < S.n; i++) {
+    const y = (i + 1) * S.rise, z1 = S.zBottom - i * g + 0.02, z0 = S.zBottom - (i + 1) * g;
+    bx('hinokiUV', S.x0, y - S.tread, z0, S.x1, y, z1, { room: 'living', layer: LAYER.GROUND_FLOOR });
+    bx('emissiveWarm', S.x0 + 0.06, y - S.tread - 0.002, z0 + 0.08, S.x1 - 0.05, y - S.tread, z0 + 0.1, { room: 'living', cast: false, receive: false });
+  }
+  addLight({ type: 3, pos: [8.0, 0.3, 3.3], ext: [0, 2.9, -5.0], dir: [0, -1, 0], cone: 0.15, kelvin: 2700, lm: 0.5, size: 0.15, gate: [1.8, -0.3, -2.0, 8.7, 6.3, 6.2] });
+  // glass balustrade following the flight, bronze handrail
+  for (let i = 0; i < 5; i++) {
+    const za = S.zBottom - i * 1.04, zb = za - 1.04, ya = i * 1.04 / g * S.rise, yb = (i + 1) * 1.04 / g * S.rise;
+    const sh = new THREE.Shape([new THREE.Vector2(za, ya - 0.05), new THREE.Vector2(zb, yb - 0.05), new THREE.Vector2(zb, yb + 1.0), new THREE.Vector2(za, ya + 1.0)]);
+    const pg = new THREE.ExtrudeGeometry(sh, { depth: 0.012, bevelEnabled: false }); pg.rotateY(-Math.PI / 2); place(pg, S.x0 - 0.02, 0, 0);
+    addGeo('glass', pg, { room: 'living', layer: LAYER.GLASS, cast: false, tag: 'glass' });
+  }
+  { const hr = new THREE.CatmullRomCurve3([new THREE.Vector3(S.x0 - 0.03, 1.02, S.zBottom + 0.05), new THREE.Vector3(S.x0 - 0.03, 1.02 + 3.2, S.zTop - 0.05)]);
+    addGeo('bronze', new THREE.TubeGeometry(hr, 8, 0.02, 12), { room: 'living' }); }
+  glazingZ(7.2, -1.8, 0.8, F1, F1 + 1.05, 1.3, { room: 'mezz' });
+  WALLS.push({ x0: 7.15, z0: -1.8, x1: 7.25, z1: 0.8, y0: F1, y1: F1 + 1.1 });
+  /* ---------- 1F MEZZANINE & LIBRARY ---------- */
+  for (let y = F1 + 0.35; y < F1 + 2.5; y += 0.42) { bx('oak', 2.3, y, -5.8, 7.0, y + 0.03, -5.5, { room: 'mezz' }); books(2.4, 6.9, y + 0.03, -5.78, 0.24, 'mezz', 'x', Math.floor(y * 13)); }
+  bx('oak', 3.0, F1 + 0.7, -0.6, 4.8, F1 + 0.74, 0.1, { room: 'mezz' });
+  for (const x of [3.05, 4.75]) bx('blackSteel', x - 0.015, F1, -0.55, x + 0.015, F1 + 0.7, 0.05, { room: 'mezz' });
+  chair(3.9, -1.0, 0, 'mezz', 'oak', 'linenFlax');
+  // Akari washi floor lantern (glowing), sumi-e canvas
+  lathe('washi', [[0.001, 0], [0.17, 0.02], [0.21, 0.2], [0.2, 0.45], [0.15, 0.62], [0.001, 0.64]], 5.4, F1 + 0.2, -0.2, 28, { room: 'mezz', cast: false });
+  cyl('blackSteel', 0.006, 0.006, 0.22, 5.4, F1, -0.2, 6, { room: 'mezz' });
+  addLight({ type: 1, pos: [5.4, F1 + 0.52, -0.2], kelvin: 2500, lm: 0.4, size: 0.18 });
+  /* ---------- 1F WASHITSU: hinoki platform, six igusa tatami, tokonoma, chabudai ---------- */
+  const W = LV.WASHITSU;
+  bx('hinokiUV', -3.0, F1, -4.88, 1.8, W, -2.2, { room: 'washitsu' });
+  const mats = [[-1.84, -4.85, -0.93, -3.03, 1], [-0.93, -4.85, -0.02, -3.03, 1], [-1.84, -3.03, -0.02, -2.12, 0], [-0.02, -4.85, 1.8, -3.94, 0], [-0.02, -3.94, 0.89, -2.12, 1], [0.89, -3.94, 1.8, -2.12, 1]];
+  for (const [x0, z0, x1, z1, vert] of mats) {
+    const gm = roundedBox(x1 - x0 - 0.004, 0.055, z1 - z0 - 0.004, 0.008, 2);
+    if (!vert) gm.rotateY(0);
+    place(gm, (x0 + x1) / 2, W + 0.0275, (z0 + z1) / 2, vert ? 0 : 0);
+    // UV v must run along the rush (long axis): rotate the UVs for horizontal mats
+    if (!vert) { const uv = gm.attributes.uv; for (let i = 0; i < uv.count; i++) { const a = uv.getX(i), b = uv.getY(i); uv.setXY(i, b, a); } }
+    addGeo('tatami', gm, { room: 'washitsu' });
+    // heri: indigo-black linen tape along both long edges
+    if (vert) { bx('paintBlack', x0 + 0.002, W + 0.055, z0, x0 + 0.03, W + 0.058, z1, { room: 'washitsu', cast: false }); bx('paintBlack', x1 - 0.03, W + 0.055, z0, x1 - 0.002, W + 0.058, z1, { room: 'washitsu', cast: false }); }
+    else { bx('paintBlack', x0, W + 0.055, z0 + 0.002, x1, W + 0.058, z0 + 0.03, { room: 'washitsu', cast: false }); bx('paintBlack', x0, W + 0.055, z1 - 0.03, x1, W + 0.058, z1 - 0.002, { room: 'washitsu', cast: false }); }
+  }
+  // tokonoma alcove (west end): raised toko-ita, toko-bashira post, kakejiku scroll, ikebana in a Bizen vase
+  bx('hinokiUV', -3.0, W, -4.85, -1.86, W + 0.12, -2.95, { room: 'washitsu' });
+  cyl('bark', 0.055, 0.06, LV.F1_CEIL - W, -1.86, W, -2.95, 12, { room: 'washitsu' });
+  bx('linenFlax', -2.98, W + 0.6, -4.2, -2.965, W + 2.1, -3.6, { room: 'washitsu' });
+  bx('paintBlack', -2.975, W + 0.75, -4.08, -2.96, W + 1.8, -3.72, { room: 'washitsu' });
+  lathe('bizen', [[0, 0], [0.05, 0], [0.08, 0.06], [0.07, 0.18], [0.035, 0.27], [0.04, 0.3], [0, 0.3]], -2.45, W + 0.12, -3.3, 24, { room: 'washitsu' });
+  { const br = new THREE.CatmullRomCurve3([new THREE.Vector3(-2.45, W + 0.4, -3.3), new THREE.Vector3(-2.35, W + 0.75, -3.4), new THREE.Vector3(-2.15, W + 0.95, -3.25), new THREE.Vector3(-1.98, W + 1.05, -3.4)]);
+    addGeo('bark', new THREE.TubeGeometry(br, 16, 0.008, 6), { room: 'washitsu' }); }
+  // chabudai + four zabuton
+  rb('lacquer', 0.9, 0.03, 0.9, 0.01, -0.2, W + 0.31, -3.5, 0, { room: 'washitsu' });
+  for (const [dx, dz] of [[-0.38, -0.38], [0.38, -0.38], [-0.38, 0.38], [0.38, 0.38]]) bx('lacquer', -0.2 + dx - 0.025, W + 0.055, -3.5 + dz - 0.025, -0.2 + dx + 0.025, W + 0.31, -3.5 + dz + 0.025, { room: 'washitsu' });
+  for (const [dx, dz] of [[0, -0.85], [0, 0.85], [-0.85, 0], [0.85, 0]]) cush('linenFlax', 0.56, 0.08, 0.6, 0.03, -0.2 + dx, W + 0.055, -3.5 + dz, 0, 0.3, { room: 'washitsu' });
+  // hinoki board ceiling with battens
+  bx('hinokiUV', -3.0, LV.F1_CEIL - 0.02, -4.85, 1.8, LV.F1_CEIL, -2.2, { room: 'washitsu', cast: false });
+  for (let x = -2.9; x < 1.8; x += 0.45) bx('hinokiUV', x, LV.F1_CEIL - 0.045, -4.85, x + 0.025, LV.F1_CEIL - 0.02, -2.2, { room: 'washitsu', cast: false });
+  /* ---------- 1F MASTER SUITE ---------- */
+  // vertical hinoki louvre feature wall behind the bed (partition z = 2.1)
+  for (let x = -8.6; x < -5.3; x += 0.07) bx('hinokiUV', x, F1, 2.02, x + 0.035, LV.F1_CEIL, 2.1, { room: 'master', cast: false });
+  rb('smokedOak', 2.2, 0.22, 2.3, 0.02, -6.9, F1, 0.75, 0, { room: 'master' });
+  rb('linen', 1.9, 0.24, 2.0, 0.08, -6.9, F1 + 0.22, 0.8, 0, { room: 'master', seg: 4 });
+  cush('linenFlax', 2.08, 0.08, 1.45, 0.04, -6.9, F1 + 0.42, 0.45, 0, 0.35, { room: 'master' });
+  for (const dx of [-0.45, 0.45]) cush('linen', 0.72, 0.2, 0.42, 0.08, -6.9 + dx, F1 + 0.44, 1.62, 0, 0.4, { room: 'master', rx: 0.35 });
+  cush('boucle', 1.9, 0.75, 0.1, 0.05, -6.9, F1 + 0.3, 1.98, 0, 0.1, { room: 'master' });
+  for (const dx of [-1.45, 1.45]) {
+    bx('smokedOak', -6.9 + dx - 0.25, F1 + 0.25, 1.55, -6.9 + dx + 0.25, F1 + 0.48, 1.98, { room: 'master' });
+    const glb = new THREE.SphereGeometry(0.13, 24, 16); place(glb, -6.9 + dx, F1 + 1.4, 1.75); addGeo('emissiveWarm', glb, { room: 'master', cast: false, receive: false });
+    cyl('brass', 0.003, 0.003, LV.F1_CEIL - (F1 + 1.53), -6.9 + dx, F1 + 1.53, 1.75, 6, { room: 'master', cast: false });
+  }
+  bx('jute', -8.3, F1, -1.2, -5.4, F1 + 0.012, 1.4, { room: 'master', cast: false });
+  rb('smokedOak', 1.4, 0.42, 0.45, 0.02, -6.9, F1, -0.85, 0, { room: 'master' });
+  WALLS.push({ x0: -8.0, z0: -1.1, x1: -5.8, z1: 2.1, y0: F1, y1: F1 + 0.7 });
+  // walk-in wardrobe: backlit fluted glass doors
+  for (let z = 2.45; z < 6.3; z += 0.6) { bx('glassFrosted', -5.08, F1 + 0.05, z, -5.06, LV.F1_CEIL - 0.05, z + 0.58, { room: 'wardrobe', layer: LAYER.GLASS, tag: 'glass', cast: false }); }
+  bx('emissiveWarm', -5.1, F1 + 0.05, 2.4, -5.095, LV.F1_CEIL - 0.05, 6.35, { room: 'wardrobe', cast: false, receive: false });
+  /* ---------- 1F HINOKI BATH ---------- */
+  const tub = { x0: -8.5, x1: -6.7, z0: 4.5, z1: 5.95 };
+  bx('hinokiUV', tub.x0, F1, tub.z0, tub.x1, F1 + 0.6, tub.z0 + 0.05, { room: 'bath' });
+  bx('hinokiUV', tub.x0, F1, tub.z1 - 0.05, tub.x1, F1 + 0.6, tub.z1, { room: 'bath' });
+  bx('hinokiUV', tub.x0, F1, tub.z0, tub.x0 + 0.05, F1 + 0.6, tub.z1, { room: 'bath' });
+  bx('hinokiUV', tub.x1 - 0.05, F1, tub.z0, tub.x1, F1 + 0.6, tub.z1, { room: 'bath' });
+  bx('hinokiUV', tub.x0 + 0.05, F1, tub.z0 + 0.05, tub.x1 - 0.05, F1 + 0.08, tub.z1 - 0.05, { room: 'bath' });
+  DYN.tubWater = { x0: tub.x0 + 0.05, x1: tub.x1 - 0.05, z0: tub.z0 + 0.05, z1: tub.z1 - 0.05, y: 3.75 };
+  WALLS.push({ x0: tub.x0, z0: tub.z0, x1: tub.x1, z1: tub.z1, y0: F1, y1: F1 + 0.6 });
+  // stone double vanity + backlit round mirror, brass rain shower
+  bx('slate', -8.4, F1 + 0.78, 2.3, -6.2, F1 + 0.88, 2.85, { room: 'bath' });
+  bx('slate', -8.4, F1 + 0.3, 2.3, -6.2, F1 + 0.78, 2.8, { room: 'bath' });
+  { const mr = new THREE.CircleGeometry(0.42, 48); place(mr, -7.3, F1 + 1.6, 2.32); addGeo('mirror', mr, { room: 'bath', cast: false });
+    const halo = new THREE.RingGeometry(0.42, 0.45, 48); place(halo, -7.3, F1 + 1.6, 2.315); addGeo('emissiveWarm', halo, { room: 'bath', cast: false, receive: false }); }
+  cyl('brass', 0.16, 0.16, 0.015, -6.0, LV.F1_CEIL - 0.06, 5.6, 32, { room: 'bath' });
+  cyl('brass', 0.01, 0.01, 0.05, -6.0, LV.F1_CEIL - 0.05, 5.6, 8, { room: 'bath' });
+  bx('steel', -6.6, F1 + 0.001, 6.2, -5.4, F1 + 0.004, 6.28, { room: 'bath', cast: false });
+  // motor-tilted horizontal cedar privacy louvres in the south and west openings
+  DYN.louvres = [];
+  for (let y = 3.78; y < 5.75; y += 0.11) {
+    const a = dynMesh(boxGeo(2.9, 0.015, 0.1), 'cedarUV', 'bath'); a.position.set(-7.05, y, 6.6); DYN.louvres.push(a);
+    const b = dynMesh(boxGeo(0.1, 0.015, 3.4), 'cedarUV', 'bath'); b.position.set(-8.9, y, 4.4); b.userData.side = true; DYN.louvres.push(b);
+  }
+  glassPane(-8.5, 3.7, 6.44, -5.6, 5.8, 6.46, { room: 'bath' });
+  glassPane(-8.76, 3.7, 2.7, -8.74, 5.8, 6.1, { room: 'bath' });
+  /* ---------- 1F ENGAWA LOUNGE ---------- */
+  rb('linenFlax', 2.2, 0.36, 0.85, 0.05, -1.0, F1, 3.05, 0, { room: 'lounge' });
+  cush('linenFlax', 2.1, 0.14, 0.78, 0.05, -1.0, F1 + 0.32, 3.08, 0, 0.18, { room: 'lounge' });
+  rb('linenFlax', 2.2, 0.38, 0.18, 0.06, -1.0, F1 + 0.3, 2.68, 0, { room: 'lounge' });
+  rb('smokedOak', 0.9, 0.32, 0.55, 0.02, -1.0, F1, 4.2, 0, { room: 'lounge' });
+  lathe('ceramicWhite', [[0, 0], [0.05, 0], [0.09, 0.12], [0.08, 0.22], [0.04, 0.3], [0, 0.3]], -0.7, F1 + 0.32, 4.2, 24, { room: 'lounge' });
+  bx('jute', -2.4, F1, 2.75, 0.6, F1 + 0.012, 5.3, { room: 'lounge', cast: false });
+  WALLS.push({ x0: -2.1, z0: 2.5, x1: 0.1, z1: 3.5, y0: F1, y1: F1 + 0.6 });
 }
 
 /* ------------------------------------------------------------------ 11. WATER, PLANAR REFLECTION, GLASS, PROBES */
@@ -2428,7 +2718,485 @@ function lookFrom(px, py, pz, tx, ty, tz) {
   camera.rotation.set(CTRL.pitch, CTRL.yaw, 0, 'YXZ');
 }
 
-/* @@SECTION_13B@@ */
+/* --- Showcase car (three.js example model: "Ferrari 458 Italia" by vicent091036), re-materialised for the garage */
+const CAR = { group: null, mats: {}, wheels: [], on: 0, onTarget: 0, idle: 0, spin: 0, paintIdx: PAINT_ORDER.indexOf('Infrared Metallic'), loaded: false };
+const CAR_URL = 'https://cdn.jsdelivr.net/gh/mrdoob/three.js@r160/examples/models/gltf/';
+function carMaterials() {
+  const R = 'garage', mk = (p, o = {}) => patchMaterial(new THREE.MeshPhysicalMaterial(Object.assign({ envMapIntensity: 1.1 }, p)), Object.assign({ room: R, noclip: false }, o));
+  const pp = PAINTS[P.carPaint];
+  CAR.mats.paint = mk({ color: pp.color, metalness: pp.metalness, roughness: pp.roughness, clearcoat: pp.clearcoat, clearcoatRoughness: pp.ccr }, { extraKey: 'paint' });
+  CAR.mats.glass = mk({ color: 0x000000, roughness: 0.03, metalness: 0, ior: 1.52, transparent: true, depthWrite: false }, { glass: true, absorb: 0.55 });
+  Object.assign(CAR.mats.glass, { blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor });
+  CAR.mats.head = mk({ color: 0x9aa0a6, roughness: 0.08, metalness: 0.6, emissive: 0xdde8ff, emissiveIntensity: 0 });
+  CAR.mats.tail = mk({ color: 0x3a0303, roughness: 0.12, metalness: 0.1, emissive: 0xff1a0a, emissiveIntensity: 0 });
+  CAR.mats.drl = mk({ color: 0x8a8a8a, roughness: 0.2, metalness: 0.2, emissive: 0xffffff, emissiveIntensity: 0 });
+  CAR.mats.rubber = mk({ color: 0x0b0b0b, roughness: 0.82, metalness: 0 });
+  CAR.mats.rim = mk({ color: 0x3a3c40, roughness: 0.28, metalness: 1 });
+  CAR.mats.chrome = mk({ color: 0xd8d8d8, roughness: 0.06, metalness: 1 });
+  CAR.mats.metal = mk({ color: 0x55585c, roughness: 0.35, metalness: 1 });
+  CAR.mats.caliper = mk({ color: 0xc8a018, roughness: 0.3, metalness: 0.2, clearcoat: 1, clearcoatRoughness: 0.1 });
+  CAR.mats.leather = mk({ color: 0x5a2a16, roughness: 0.55, metalness: 0, sheen: 0.4, sheenRoughness: 0.5, sheenColor: 0x7a4a30 });
+  CAR.mats.dark = mk({ color: 0x141414, roughness: 0.6, metalness: 0 });
+  CAR.mats.plastic = mk({ color: 0x1c1c1c, roughness: 0.45, metalness: 0 });
+  CAR.mats.carbon = MAT.get('carbon', R);
+  CAR.mats.cabin = mk({ color: 0x111111, roughness: 0.5, emissive: 0xffd2a0, emissiveIntensity: 0 });
+}
+function assignCarMaterial(o) {
+  const mn = (o.material && o.material.name) || '', name = o.name || '';
+  const M = CAR.mats;
+  if (mn === 'Body_Color') return M.paint;
+  if (mn === 'Glass_Gray') return M.glass;
+  if (name.startsWith('brakes')) return M.caliper;
+  if (mn === 'Taillight_Glass') return M.tail;
+  if (mn === 'Projector_Glass') return M.head;
+  if (mn === 'Turn_Signal_LED') return M.drl;
+  if (mn === 'Tires') return M.rubber;
+  if (mn === 'metal_chrome') return M.chrome;
+  if (mn === 'metal_gray') return name.startsWith('rim') ? M.rim : M.metal;
+  if (mn === 'Leather_red' || mn === 'Leather') return M.leather;
+  if (mn === 'Carbon_Fiber') return M.carbon;
+  if (mn === 'Interior_light') return M.cabin;
+  if (mn === 'Interior_dark' || mn === 'Carpet') return M.dark;
+  if (mn === 'plastic_gray') return M.plastic;
+  return o.material;
+}
+function placeCar(obj) {
+  obj.position.set(-6.0, LV.GARAGE, 2.8);
+  obj.rotation.y = -8 * DEG;
+  setLayer(obj, LAYER.GARAGE);
+  obj.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  obj.userData.probeRooms = ['garage'];
+  MESHES.noProbe.push(obj);
+  scene.add(obj);
+  WALLS.push({ x0: -7.05, z0: 0.45, x1: -4.95, z1: 5.15, y0: -0.1, y1: 1.3 });
+}
+function loadCar() {
+  carMaterials();
+  return new Promise((resolve) => {
+    const draco = new DRACOLoader(); draco.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/libs/draco/gltf/');
+    const loader = new GLTFLoader(); loader.setDRACOLoader(draco);
+    const fail = (e) => { console.warn('Car model unavailable, using the covered fallback', e); buildCoveredCar(); resolve(false); };
+    const timer = setTimeout(() => fail('timeout'), 20000);
+    loader.load(CAR_URL + 'ferrari.glb', (gltf) => {
+      clearTimeout(timer);
+      const car = gltf.scene;
+      car.traverse((o) => { if (o.isMesh) o.material = assignCarMaterial(o); });
+      for (const n of ['wheel_fl', 'wheel_fr', 'wheel_rl', 'wheel_rr']) { const w = car.getObjectByName(n); if (w) CAR.wheels.push(w); }
+      // baked contact shadow under the body (ships with the model)
+      new THREE.TextureLoader().load(CAR_URL + 'ferrari_ao.png', (tx) => {
+        const sm = new THREE.Mesh(new THREE.PlaneGeometry(0.655 * 4, 1.3 * 4), new THREE.MeshBasicMaterial({ map: tx, blending: THREE.MultiplyBlending, toneMapped: false, transparent: true, premultipliedAlpha: true }));
+        sm.rotation.x = -Math.PI / 2; sm.position.y = 0.004; sm.renderOrder = 2; car.add(sm); setLayer(car, LAYER.GARAGE);
+      });
+      CAR.group = car; CAR.loaded = true;
+      placeCar(car);
+      resolve(true);
+    }, undefined, (e) => { clearTimeout(timer); fail(e); });
+  });
+}
+function buildCoveredCar() {
+  // offline fallback: a grand tourer silhouette under a fitted satin car cover
+  const g = roundedBox(1.95, 1.0, 4.6, 0.35, 6);
+  const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    let x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+    const roof = Math.exp(-Math.pow((z + 0.15) / 1.0, 2)) * 0.45;
+    y = y > 0 ? y * (0.35 + roof) + 0.05 * Math.sin(x * 9 + z * 3) * 0.2 : y;
+    x *= 1 - 0.12 * Math.max(0, y);
+    p.setXYZ(i, x, y + 0.62, z);
+  }
+  g.computeVertexNormals();
+  const m = new THREE.Mesh(g, patchMaterial(new THREE.MeshPhysicalMaterial({ color: 0x2b2d33, roughness: 0.45, sheen: 1, sheenRoughness: 0.35, sheenColor: 0x9aa0b0 }), { room: 'garage', extraKey: 'cover' }));
+  const grp = new THREE.Group(); grp.add(m); CAR.group = grp; placeCar(grp);
+}
+function setCarPaint(name) {
+  P.carPaint = name; CAR.paintIdx = PAINT_ORDER.indexOf(name);
+  const pp = PAINTS[name], m = CAR.mats.paint; if (!m) return;
+  m.color.set(pp.color); m.metalness = pp.metalness; m.roughness = pp.roughness; m.clearcoat = pp.clearcoat; m.clearcoatRoughness = pp.ccr;
+}
+
+/* --- World update: doors, louvres, car, fire */
+const _gdPos = new THREE.Vector3();
+function garageDoorPose(s) {
+  const y0 = LV.GARAGE, Lv = 2.62 - y0 - 0.3, R = 0.3, arc = Math.PI / 2 * R, z = 6.42;
+  if (s <= Lv) return [y0 + s, z, 0];
+  if (s <= Lv + arc) { const th = (s - Lv) / R; return [y0 + Lv + R * Math.sin(th), z - R * (1 - Math.cos(th)), -th]; }
+  return [y0 + Lv + R, z - R - (s - Lv - arc), -Math.PI / 2];
+}
+function updateWorld(dt, t, cdt) {
+  // garage door: critically paced roll along the curved tracks
+  const GD = DYN.garageDoor;
+  if (GD) {
+    GD.target = P.garageOpen ? 1 : 0;
+    const prev = GD.open;
+    GD.open += clamp(GD.target - GD.open, -GD.speed * cdt, GD.speed * cdt);
+    const e = smootherstep(0, 1, GD.open);
+    GD.panels.forEach((pn, i) => { const [y, z, rx] = garageDoorPose(0.265 + i * 0.53 + e * 2.7); pn.position.set(-6.0, y, z); pn.rotation.set(rx, 0, 0); });
+    if (Math.abs(GD.open - prev) > 1e-5) { SHADOW.dirty = true; if (typeof AUDIO !== 'undefined') AUDIO.motor = 1; } else if (typeof AUDIO !== 'undefined') AUDIO.motor = 0;
+    if (Math.abs(GD.open - prev) > 1e-5 && Math.abs(GD.open - GD.target) < 1e-4) PROBES.dirty = true;
+  }
+  if (DYN.frontDoor) { const F = DYN.frontDoor; F.open += (F.target - F.open) * (1 - Math.exp(-cdt * 3)); F.g.rotation.y = -F.open * 1.35; }
+  if (DYN.louvres) { const a = lerp(0.05, 1.35, P.louverTilt); for (const l of DYN.louvres) if (l.userData.side) l.rotation.z = a; else l.rotation.x = a; }
+  if (DYN.slide) DYN.slide.update(cdt);
+  // car: welcome sequence (DRLs sweep, then headlights, tail bar, cabin glow), idle rock, wheel spin
+  CAR.on += clamp(CAR.onTarget - CAR.on, -cdt * 0.8, cdt * 0.8);
+  const m = CAR.mats;
+  if (m.drl) {
+    const drl = smoothstep(0.0, 0.35, CAR.on), head = smoothstep(0.35, 0.8, CAR.on);
+    m.drl.emissiveIntensity = drl * 9; m.head.emissiveIntensity = head * (P.headlights ? 14 : 5); m.tail.emissiveIntensity = drl * 6; m.cabin.emissiveIntensity = head * 0.6;
+  }
+  if (CAR.group) {
+    CAR.idle = CAR.on > 0.6 && P.engineIdle !== false ? 1 : 0;
+    const rock = CAR.on > 0.5 ? 0.0012 * Math.sin(t * 26) + 0.0008 * Math.sin(t * 13.7) : 0;
+    CAR.group.position.y = LV.GARAGE + rock; CAR.group.rotation.z = rock * 0.6;
+    if (P.wheelSpin) for (const w of CAR.wheels) w.rotation.x += cdt * 4;
+  }
+}
+
+/* --- Walkthrough physics: capsule (r = 0.38 m) against walls, glass and furniture; continuous floor solver */
+const WALK = { x: 0, y: 0, z: 0, vy: 0, eye: 1.62, eyeCur: 1.62, crouch: false, init: false, camY: 0, camV: 0 };
+const PIT = { x0: 3.2, x1: 7.0, z0: 2.4, z1: 5.4 };
+function inRect(x, z, x0, z0, x1, z1) { return x >= x0 && x <= x1 && z >= z0 && z <= z1; }
+function floorCandidates(x, z) {
+  const c = [];
+  const S = STAIR, g = (S.zBottom - S.zTop) / S.n;
+  if (x >= S.x0 - 0.02 && x <= S.x1 && z <= S.zBottom + 0.02 && z >= S.zTop) { const i = clamp(Math.floor((S.zBottom - z) / g), 0, S.n - 1); c.push((i + 1) * S.rise); }
+  const inH = inRect(x, z, HOUSE.x0 + 0.2, HOUSE.z0 + 0.15, HOUSE.x1 - 0.3, 6.45) || inRect(x, z, 1.8, 6.2, 8.7, 6.2);
+  if (inRect(x, z, -8.75, -0.5, -3.0, 6.45)) c.push(LV.GARAGE);
+  else if (inRect(x, z, -3.0, 3.66, 0.45, 6.45)) c.push(LV.GENKAN);
+  else if (inRect(x, z, PIT.x0, PIT.z0, PIT.x1, PIT.z1)) c.push(LV.PIT);
+  else if (inRect(x, z, COURT.x0, COURT.z0, COURT.x1, COURT.z1)) c.push(-0.06);
+  else if (inH) c.push(0);
+  // first floor surfaces (not over the courtyard, the living void or the stairwell)
+  if (inRect(x, z, -8.75, -5.8, 1.8, -2.2) || inRect(x, z, -8.75, -2.2, -3.0, 6.45) || inRect(x, z, -3.0, 2.5, 1.8, 6.45) || inRect(x, z, 1.8, -5.8, 8.7, -1.8) || inRect(x, z, 1.8, -1.8, 7.2, 0.8) || inRect(x, z, -3.0, 6.45, 1.8, 7.8)) {
+    c.push(inRect(x, z, -1.86, -4.85, 1.8, -2.12) ? LV.WASHITSU + 0.055 : (inRect(x, z, -3.0, -4.85, -1.86, -2.95) ? LV.WASHITSU + 0.12 : LV.F1));
+  }
+  if (!inH) {
+    for (const s of STONES) if (Math.hypot(x - s.x, z - s.z) < s.r) c.push(s.top);
+    if (inPool(x, z)) c.push(POOL.bottom);
+    else if (inRect(x, z, 1.8, 6.2, 9.0, 7.15)) c.push(-0.02);
+    else if (inRect(x, z, -8.6, 6.75, -3.4, SITE.z1)) c.push(LV.GRADE + 0.06);
+    else c.push(inRect(x, z, -1.6, 6.75, 0.6, 7.75) ? -0.13 : LV.GRADE);
+  }
+  return c;
+}
+function floorAt(x, z, footY) {
+  let best = -99;
+  for (const y of floorCandidates(x, z)) if (y <= footY + 0.36 && y > best) best = y;
+  return best;
+}
+function collide(px, pz, footY, r) {
+  const y0 = footY + 0.3, y1 = footY + 1.75;
+  for (let it = 0; it < 3; it++) {
+    for (const list of [WALLS, GLASS_PANES]) for (const w of list) {
+      if (w.y1 < y0 || w.y0 > y1) continue;
+      if (w.door === 'garage' && DYN.garageDoor && DYN.garageDoor.open > 0.85) continue;
+      if (w.door === 'front' && DYN.frontDoor && DYN.frontDoor.open > 0.6) continue;
+      if (w.slide && w.slide()) continue;
+      const cx = clamp(px, w.x0, w.x1), cz = clamp(pz, w.z0, w.z1);
+      let dx = px - cx, dz = pz - cz; const d = Math.hypot(dx, dz);
+      if (d < r) {
+        if (d < 1e-6) { // centre inside the box: push out along the shallowest axis
+          const ox = Math.min(px - w.x0, w.x1 - px), oz = Math.min(pz - w.z0, w.z1 - pz);
+          if (ox < oz) px = (px - w.x0 < w.x1 - px) ? w.x0 - r : w.x1 + r; else pz = (pz - w.z0 < w.z1 - pz) ? w.z0 - r : w.z1 + r;
+        } else { px = cx + dx / d * r; pz = cz + dz / d * r; }
+      }
+    }
+  }
+  return [px, pz];
+}
+function walkTo(x, z, yaw, pitch = -0.04, nearY = null) {
+  WALK.x = x; WALK.z = z;
+  const c = floorCandidates(x, z);
+  if (nearY === null) WALK.y = c.length ? Math.max(...c.filter((y) => y < 4.5)) : 0;
+  else { let best = c[0] ?? 0; for (const y of c) if (Math.abs(y - nearY) < Math.abs(best - nearY)) best = y; WALK.y = best; }
+  WALK.camY = WALK.y + WALK.eye; WALK.camV = 0; WALK.init = true;
+  CTRL.yaw = yaw; CTRL.pitch = pitch;
+}
+function updateWalk(dt) {
+  if (!WALK.init) walkTo(camera.position.x, camera.position.z, CTRL.yaw, CTRL.pitch, camera.position.y - 1.62);
+  const k = CTRL.keys, run = k.ShiftLeft || k.ShiftRight;
+  const sp = (run ? 2.6 : 1.35) * P.walkSpeed;
+  let mx = 0, mz = 0;
+  const fx = -Math.sin(CTRL.yaw), fz = -Math.cos(CTRL.yaw), rx = Math.cos(CTRL.yaw), rz = -Math.sin(CTRL.yaw);
+  if (k.KeyW || k.ArrowUp) { mx += fx; mz += fz; }
+  if (k.KeyS || k.ArrowDown) { mx -= fx; mz -= fz; }
+  if (k.KeyD || k.ArrowRight) { mx += rx; mz += rz; }
+  if (k.KeyA || k.ArrowLeft) { mx -= rx; mz -= rz; }
+  const ml = Math.hypot(mx, mz);
+  if (ml > 0) {
+    const nx = WALK.x + mx / ml * sp * dt, nz = WALK.z + mz / ml * sp * dt;
+    let [cx, cz] = collide(nx, nz, WALK.y, 0.38);
+    const fy = floorAt(cx, cz, WALK.y);
+    if (fy > -50 && fy > WALK.y - 0.45) { WALK.x = cx; WALK.z = cz; WALK.y = fy; }
+    else { // sliding along a ledge: try each axis alone
+      let [ax, az] = collide(nx, WALK.z, WALK.y, 0.38); const fa = floorAt(ax, az, WALK.y);
+      if (fa > -50 && fa > WALK.y - 0.45) { WALK.x = ax; WALK.z = az; WALK.y = fa; }
+      else { [ax, az] = collide(WALK.x, nz, WALK.y, 0.38); const fb = floorAt(ax, az, WALK.y); if (fb > -50 && fb > WALK.y - 0.45) { WALK.x = ax; WALK.z = az; WALK.y = fb; } }
+    }
+    WALK.stepT = (WALK.stepT || 0) + sp * dt;
+    if (WALK.stepT > (run ? 0.85 : 0.7)) { WALK.stepT = 0; if (typeof footstep === 'function') footstep(WALK.x, WALK.y, WALK.z); }
+  } else { const fy = floorAt(WALK.x, WALK.z, WALK.y); if (fy > -50) WALK.y = fy; }
+  WALK.eye = k.KeyQ ? 0.85 : 1.62;
+  WALK.eyeCur += (WALK.eye - WALK.eyeCur) * (1 - Math.exp(-dt * 6));
+  if (k.Space && !WALK.hop) { WALK.hop = true; WALK.vy = 2.2; }
+  if (!k.Space) WALK.hop = false;
+  WALK.hy = (WALK.hy || 0) + (WALK.vy || 0) * dt; WALK.vy = (WALK.vy || 0) - 9.8 * dt; if (WALK.hy <= 0) { WALK.hy = 0; WALK.vy = 0; }
+  // critically damped vertical follow (stairs, pit, genkan) with bounded acceleration
+  const target = WALK.y + WALK.eyeCur + WALK.hy;
+  const w = 11, acc = clamp(w * w * (target - WALK.camY) - 2 * w * WALK.camV, -14, 14);
+  WALK.camV += acc * dt; WALK.camY += WALK.camV * dt;
+  if (Math.abs(target - WALK.camY) > 1.5) { WALK.camY = target; WALK.camV = 0; }
+  const bob = ml > 0 ? Math.sin((WALK.stepT || 0) / 0.7 * Math.PI * 2) * 0.012 : 0;
+  camera.position.set(WALK.x, WALK.camY + bob, WALK.z);
+  camera.rotation.set(CTRL.pitch, CTRL.yaw, 0, 'YXZ');
+}
+// Teleports 1–6
+const TELEPORTS = [
+  { key: '1', name: 'Exterior pool', jp: '水盤', x: 5.2, z: 11.2, yaw: 0.12 },
+  { key: '2', name: 'Glass garage', jp: 'ガレージ', x: -3.9, z: 5.6, yaw: 0.95 },
+  { key: '3', name: 'Living & kitchen', jp: '居間・台所', x: 7.2, z: 5.6, yaw: 0.92 },
+  { key: '4', name: 'Courtyard', jp: '坪庭', x: 1.2, z: 2.0, yaw: 0.85 },
+  { key: '5', name: 'Mezzanine & tatami', jp: '中二階・和室', x: 6.4, z: -3.2, yaw: 1.45 },
+  { key: '6', name: 'Master & hinoki bath', jp: '主寝室・檜風呂', x: -4.0, z: -1.5, yaw: 2.6 },
+];
+function teleport(i) {
+  const T = TELEPORTS[i]; if (!T) return;
+  if (P.cameraMode !== 'Walkthrough') { P.cameraMode = 'Walkthrough'; onCameraMode(); }
+  walkTo(T.x, T.z, T.yaw, -0.04, i === 4 || i === 5 ? LV.F1 : 0);
+  toast(`${T.name} · ${T.jp}`);
+}
+// Drone maquette: orbit with section cut
+const DRONE = { az: 0.6, el: 0.62, r: 30, tx: 0, ty: 2.2, tz: 1.5, auto: true };
+function updateDrone(dt) {
+  if (DRONE.auto && !CTRL.dragging) DRONE.az += dt * 0.06;
+  if (CTRL.dragging) { DRONE.auto = false; }
+  const el = clamp(DRONE.el, 0.12, 1.45);
+  camera.position.set(DRONE.tx + DRONE.r * Math.cos(el) * Math.sin(DRONE.az), DRONE.ty + DRONE.r * Math.sin(el), DRONE.tz + DRONE.r * Math.cos(el) * Math.cos(DRONE.az));
+  camera.lookAt(DRONE.tx, DRONE.ty, DRONE.tz);
+}
+function onCameraMode() {
+  const b = $('tb-cam'); if (b) b.querySelector('.lbl').textContent = P.cameraMode === 'Cinematic' ? 'Film tour' : P.cameraMode === 'Walkthrough' ? 'Walkthrough' : 'Drone maquette';
+  $('crosshair').classList.toggle('on', P.cameraMode === 'Walkthrough');
+  if (P.cameraMode === 'Walkthrough') { WALK.init = false; }
+  if (P.cameraMode === 'Drone Maquette') { DRONE.auto = true; P.clipHeight = 7.4; }
+  else { P.clipHeight = 7.4; }
+  SH.uClipHeight.value = P.clipHeight;
+  if (P.cameraMode === 'Cinematic' && typeof tourStart === 'function') tourStart();
+  if (GUI_CTRL.cam) GUI_CTRL.cam.updateDisplay();
+}
+function cycleCameraMode() {
+  const order = ['Cinematic', 'Walkthrough', 'Drone Maquette'];
+  P.cameraMode = order[(order.indexOf(P.cameraMode) + 1) % order.length]; onCameraMode();
+  toast(P.cameraMode === 'Cinematic' ? 'Film tour' : P.cameraMode === 'Walkthrough' ? 'Walkthrough · WASD, drag to look' : 'Drone maquette · drag to orbit, Clip height in the panel');
+}
+function updateCameraModes(dt, t) {
+  if (P.cameraMode === 'Walkthrough') updateWalk(dt);
+  else if (P.cameraMode === 'Drone Maquette') {
+    if (CTRL.dragging) { DRONE.az = -CTRL.yaw; DRONE.el = 0.62 - CTRL.pitch; } else { CTRL.yaw = -DRONE.az; CTRL.pitch = 0.62 - DRONE.el; }
+    updateDrone(dt);
+  } else if (typeof updateTour === 'function') updateTour(dt, t);
+  else updateFly(dt);
+}
+// Interactions: E / click on doors, keys
+const raycaster = new THREE.Raycaster(), _ndc = new THREE.Vector2();
+function nearestInteractable() {
+  const p = camera.position, list = [];
+  list.push({ id: 'garage', d: Math.hypot(p.x + 6.0, p.z - 6.3), label: P.garageOpen ? 'Close the garage door' : 'Open the garage door' });
+  list.push({ id: 'front', d: Math.hypot(p.x + 0.4, p.z - 6.6), label: DYN.frontDoor && DYN.frontDoor.target > 0.5 ? 'Close the front door' : 'Open the front door' });
+  list.push({ id: 'slide', d: Math.hypot(p.x - 1.8, p.z - 0.1) + (p.y > 2.5 ? 9 : 0), label: P.slideOpen ? 'Close the courtyard doors' : 'Slide the courtyard doors open' });
+  list.push({ id: 'shoji', d: Math.hypot(p.x + 0.6, p.z + 2.6) + (p.y < 2.5 ? 9 : 0), label: P.shojiOpen ? 'Close the yukimi-shoji' : 'Open the yukimi-shoji' });
+  list.push({ id: 'car', d: Math.hypot(p.x + 6.0, p.z - 2.8) - 1.6 + (p.y > 2.5 ? 9 : 0), label: 'Showcase the car (G)' });
+  list.sort((a, b) => a.d - b.d);
+  return list[0].d < 2.6 ? list[0] : null;
+}
+function interact(id) {
+  if (id === 'garage') { P.garageOpen = !P.garageOpen; syncButtons(); }
+  else if (id === 'front' && DYN.frontDoor) DYN.frontDoor.target = DYN.frontDoor.target > 0.5 ? 0 : 1;
+  else if (id === 'slide') { P.slideOpen = !P.slideOpen; syncButtons(); }
+  else if (id === 'shoji') { P.shojiOpen = !P.shojiOpen; syncButtons(); }
+  else if (id === 'car') carShowcase();
+  if (typeof sfx === 'function') sfx(id);
+}
+function carShowcase() {
+  if (CAR.onTarget < 0.5) { CAR.onTarget = 1; P.engineIdle = true; toast(`${P.carPaint} · lights on, engine at idle`); if (typeof engineStart === 'function') engineStart(); }
+  else { const n = PAINT_ORDER[(CAR.paintIdx + 1) % PAINT_ORDER.length]; setCarPaint(n); toast(`Paint · ${n}`); PROBES.dirty = true; }
+  syncButtons();
+}
+function onKey(e) {
+  if (typeof startAudio === 'function' && e.code !== 'KeyM') startAudio();
+  const c = e.code;
+  if (c === 'KeyC') cycleCameraMode();
+  else if (c === 'KeyP') { P.holdCamera = !P.holdCamera; syncButtons(); }
+  else if (c === 'KeyO') { P.freezeScene = !P.freezeScene; syncButtons(); }
+  else if (c === 'KeyV' || (c === 'Escape' && P.cleanView)) setClean(!P.cleanView);
+  else if (c === 'KeyE') { const n = nearestInteractable(); if (n) interact(n.id); else if (P.cameraMode !== 'Walkthrough') { P.garageOpen = !P.garageOpen; syncButtons(); } }
+  else if (c === 'KeyG') carShowcase();
+  else if (c === 'KeyL') cycleLighting();
+  else if (c === 'KeyT') cycleWeather();
+  else if (c === 'KeyM') setMuted(P.audio);
+  else if (c === 'KeyH') toggleGUI();
+  else if (c === 'KeyI' || e.key === '?') setGuide($('help').classList.contains('hidden'));
+  else if (/^Digit[1-6]$/.test(c)) teleport(+c.slice(5) - 1);
+}
+function onClick(e) {
+  if (typeof startAudio === 'function') startAudio();
+  _ndc.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+  raycaster.setFromCamera(_ndc, camera);
+  if (typeof clickWater === 'function') clickWater(raycaster);
+  if (P.cameraMode === 'Walkthrough') { const n = nearestInteractable(); if (n) interact(n.id); }
+}
+// Lighting & weather cycling (cross-faded)
+const XF = { light: null, wx: null };
+function cycleLighting() {
+  const n = LIGHT_ORDER[(LIGHT_ORDER.indexOf(P.lighting) + 1) % LIGHT_ORDER.length];
+  setLighting(n); toast(`Lighting · ${n}`);
+}
+function setLighting(n) {
+  P.lighting = n; const L = LIGHT_PRESETS[n];
+  XF.light = { t: 0, from: { i: P.interiorDim, g: P.garageDim, h: P.hearth, k: P.colorTemp }, to: { i: L.interior, g: L.garage, h: L.hearth, k: L.kelvin } };
+  syncButtons();
+}
+function cycleWeather() {
+  const n = WX_ORDER[(WX_ORDER.indexOf(P.weather) + 1) % WX_ORDER.length];
+  setWeather(n); toast(`Weather · ${n}`);
+}
+function setWeather(n) {
+  const from = JSON.parse(JSON.stringify(WX.cur)), to = JSON.parse(JSON.stringify(WX_PRESETS[n]));
+  P.weather = n; XF.wx = { t: 0, from, to };
+  syncButtons();
+}
+const lerpArr = (a, b, t) => a.map((v, i) => lerp(v, b[i], t));
+function updateCrossfades(dt) {
+  if (XF.light) {
+    const X = XF.light; X.t = Math.min(1, X.t + dt / 3); const e = smoothstep(0, 1, X.t);
+    P.interiorDim = lerp(X.from.i, X.to.i, e); P.garageDim = lerp(X.from.g, X.to.g, e); P.hearth = lerp(X.from.h, X.to.h, e); P.colorTemp = lerp(X.from.k, X.to.k, e);
+    if (X.t >= 1) { XF.light = null; PROBES.dirty = true; }
+    else if (Math.floor(X.t * 6) !== Math.floor((X.t - dt / 3) * 6)) PROBES.dirty = true;
+  }
+  if (XF.wx) {
+    const X = XF.wx; X.t = Math.min(1, X.t + dt / 3); const e = smoothstep(0, 1, X.t), a = X.from, b = X.to, w = WX.cur;
+    for (const k of Object.keys(b)) if (typeof b[k] === 'number') w[k] = lerp(a[k], b[k], e); else if (Array.isArray(b[k])) w[k] = lerpArr(a[k], b[k], e);
+    P.timeOfDay = w.tod; P.sunAzimuth = w.az; P.wind = w.wind;
+    SH.uWet.value = w.wet; SH.uRain.value = w.rain; SH.uSnowCover.value = w.snowCover; SH.uAutumn.value = w.autumn; SH.uWind.value = w.wind;
+    skyUniforms.uCloudCover.value = w.cloud; skyUniforms.turbidity.value = w.turb; skyUniforms.uOvercast.value = w.overcast;
+    scene.fog.density = w.fog; scene.fog.color.setRGB(w.fogCol[0], w.fogCol[1], w.fogCol[2]);
+    if (!XF.light) { P.interiorDim = w.interior; P.garageDim = w.garage; P.hearth = w.hearth; }
+    updateSun();
+    if (X.t >= 1) { XF.wx = null; if (GUI_CTRL.gui) GUI_CTRL.gui.updateDisplay(); }
+  }
+  // overcast sky colour and fog colour follow the light level
+  const lvl = 0.15 + 0.85 * smoothstep(-6 * DEG, 25 * DEG, sunState.elev);
+  skyUniforms.uOvercastCol.value.setRGB(0.55 * lvl, 0.58 * lvl, 0.62 * lvl);
+  if (WX.cur) { const fc = WX.cur.fogCol; scene.fog.color.setRGB(fc[0] * lvl * 0.9, fc[1] * lvl * 0.9, fc[2] * lvl * 0.9); }
+}
+// UI plumbing
+const GUI_CTRL = {};
+function syncButtons() {
+  const set = (id, on) => { const b = $(id); if (b) b.setAttribute('aria-pressed', on ? 'true' : 'false'); };
+  set('tb-hold', P.holdCamera); set('tb-freeze', P.freezeScene); set('tb-garage', P.garageOpen); set('tb-slide', P.slideOpen || P.shojiOpen); set('tb-car', CAR.onTarget > 0.5); set('tb-sound', !P.audio);
+  const wl = $('tb-weather'); if (wl) wl.querySelector('.lbl').textContent = WX_SHORT[P.weather] || P.weather;
+  const ll = $('tb-light'); if (ll) ll.querySelector('.lbl').textContent = LIGHT_PRESETS[P.lighting].label;
+  if (GUI_CTRL.gui) GUI_CTRL.gui.updateDisplay();
+}
+function setClean(on) { P.cleanView = on; document.body.classList.toggle('clean', on); const h = $('cleanhint'); h.style.opacity = on ? 1 : 0; if (on) setTimeout(() => (h.style.opacity = 0), 2200); }
+function setGuide(on) { $('help').classList.toggle('hidden', !on); $('help-open').classList.toggle('shown', !on); try { localStorage.setItem('house.guide', on ? '1' : '0'); } catch (e) { /* storage unavailable */ } }
+function toggleGUI() { const g = GUI_CTRL.gui; if (!g) return; if (g.closed) g.open(); else g.close(); }
+function setMuted(m) { P.audio = !m; if (typeof AUDIO !== 'undefined' && AUDIO.master) AUDIO.master.gain.setTargetAtTime(m ? 0 : P.volume, AUDIO.ctx.currentTime, 0.1); syncButtons(); try { localStorage.setItem('house.muted', m ? '1' : '0'); } catch (e) { /* storage unavailable */ } }
+function buildGUI() {
+  const gui = new dat.GUI({ width: 300 });
+  const fE = gui.addFolder('Environment');
+  GUI_CTRL.weather = fE.add(P, 'weather', WX_ORDER).name('Weather preset').onChange(setWeather);
+  fE.add(P, 'timeOfDay', 5.5, 21.5, 0.05).name('Time of day').onChange(() => { WX.cur.tod = P.timeOfDay; updateSun(); });
+  fE.add(P, 'sunAzimuth', 0, 360, 1).name('Sun azimuth').onChange(() => { WX.cur.az = P.sunAzimuth; updateSun(); });
+  fE.add(P, 'wind', 0, 1, 0.01).name('Wind').onChange((v) => { SH.uWind.value = v; WX.cur.wind = v; });
+  fE.add(SH.uRain, 'value', 0, 1, 0.01).name('Rain');
+  fE.add(SH.uSnowCover, 'value', 0, 1, 0.01).name('Snow cover');
+  const fA = gui.addFolder('Architecture');
+  fA.add(P, 'clipHeight', 0.5, 7.4, 0.01).name('Floor cutaway height').onChange((v) => (SH.uClipHeight.value = v));
+  fA.add(P, 'garageOpen').name('Garage door open').onChange(syncButtons);
+  fA.add(P, 'slideOpen').name('Courtyard doors open').onChange(syncButtons);
+  fA.add(P, 'shojiOpen').name('Yukimi-shoji open').onChange(syncButtons);
+  fA.add(P, 'louverTilt', 0, 1, 0.01).name('Bath louvre tilt').onChange(() => (SHADOW.dirty = true));
+  const fL = gui.addFolder('Lighting');
+  GUI_CTRL.lighting = fL.add(P, 'lighting', LIGHT_ORDER).name('Mood').onChange(setLighting);
+  fL.add(P, 'interiorDim', 0, 1.5, 0.01).name('Interior dimmer').onChange(() => (PROBES.dirty = true));
+  fL.add(P, 'garageDim', 0, 1.5, 0.01).name('Garage gallery').onChange(() => (PROBES.dirty = true));
+  fL.add(P, 'hearth', 0, 2, 0.01).name('Fireplace');
+  fL.add(P, 'colorTemp', 2200, 4000, 10).name('Colour temp (K)').onChange(() => (PROBES.dirty = true));
+  const fC = gui.addFolder('Garage & car');
+  GUI_CTRL.paint = fC.add(P, 'carPaint', PAINT_ORDER).name('Paint finish').onChange((v) => { setCarPaint(v); PROBES.dirty = true; });
+  fC.add(P, 'headlights').name('Headlights');
+  fC.add({ go: carShowcase }, 'go').name('Showcase sequence (G)');
+  fC.add(P, 'wheelSpin').name('Wheel rotation');
+  const fR = gui.addFolder('Rendering');
+  GUI_CTRL.quality = fR.add(P, 'quality', ['Low', 'High']).name('Quality').onChange((v) => setQuality(v));
+  fR.add(P, 'autoQuality').name('Auto-drop to Low');
+  fR.add(P, 'exposure', 0.3, 2.5, 0.01).name('Exposure');
+  fR.add(P, 'autoExposure').name('Eye adaptation');
+  fR.add(P, 'bloomStrength', 0, 1.5, 0.01).name('Bloom');
+  fR.add(P, 'bloomThreshold', 0.2, 3, 0.01).name('Bloom threshold');
+  fR.add(P, 'ssao').name('SSAO');
+  fR.add(P, 'godRays').name('God rays');
+  fR.add(P, 'grain', 0, 0.05, 0.001).name('Film grain');
+  fR.add(P, 'vignette', 0, 1, 0.01).name('Vignette');
+  fR.add(P, 'sharpen', 0, 1, 0.01).name('Sharpening');
+  const fLe = gui.addFolder('Lens');
+  fLe.add(P, 'dof').name('Depth of field + AF');
+  fLe.add(P, 'fStop', 1.4, 16, 0.1).name('Aperture (f-stop)');
+  fLe.add(P, 'dofStrength', 0, 2, 0.01).name('Max bokeh');
+  const fCam = gui.addFolder('Camera');
+  fCam.add(P, 'movie').name('Cinematic = film tour');
+  fCam.add(P, 'letterbox').name('Letterbox');
+  fCam.add(P, 'tourWeather').name('Change weather each loop');
+  GUI_CTRL.cam = fCam.add(P, 'cameraMode', ['Cinematic', 'Walkthrough', 'Drone Maquette']).name('Mode').onChange(onCameraMode);
+  fCam.add(P, 'walkSpeed', 0.3, 4, 0.01).name('Walk speed');
+  fCam.add(P, 'holdCamera').name('Hold shot (P)').onChange(syncButtons);
+  fCam.add(P, 'freezeScene').name('Freeze time (O)').onChange(syncButtons);
+  fCam.add({ c: () => setClean(true) }, 'c').name('Clean view (V)');
+  fCam.add(P, 'volume', 0, 1, 0.01).name('Volume').onChange((v) => { if (typeof AUDIO !== 'undefined' && AUDIO.master && P.audio) AUDIO.master.gain.value = v; });
+  fCam.add(P, 'audio').name('Sound').onChange((v) => setMuted(!v));
+  gui.close();
+  GUI_CTRL.gui = gui;
+}
+function setQuality(q, keepScale) {
+  P.quality = q;
+  if (!keepScale) RES.scale = 1;
+  sun.shadow.mapSize.set(q === 'High' ? 4096 : 2048, q === 'High' ? 4096 : 2048);
+  if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
+  SHADOW.dirty = true;
+  makeTargets();
+  if (GUI_CTRL.quality) GUI_CTRL.quality.updateDisplay();
+}
+function setupUI() {
+  buildGUI();
+  const rooms = $('rooms');
+  rooms.innerHTML = TELEPORTS.map((t, i) => `<button type="button" role="menuitem" data-i="${i}"><kbd>${t.key}</kbd><span>${t.name}<small>${t.jp}</small></span></button>`).join('');
+  rooms.addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; teleport(+b.dataset.i); rooms.classList.remove('open'); $('tb-rooms').setAttribute('aria-expanded', 'false'); });
+  $('tb-rooms').addEventListener('click', () => { const o = !rooms.classList.contains('open'); rooms.classList.toggle('open', o); $('tb-rooms').setAttribute('aria-expanded', o ? 'true' : 'false'); });
+  $('tb-cam').addEventListener('click', () => { if (typeof startAudio === 'function') startAudio(); cycleCameraMode(); });
+  $('tb-hold').addEventListener('click', () => { P.holdCamera = !P.holdCamera; syncButtons(); });
+  $('tb-freeze').addEventListener('click', () => { P.freezeScene = !P.freezeScene; syncButtons(); });
+  $('tb-garage').addEventListener('click', () => { if (typeof startAudio === 'function') startAudio(); interact('garage'); });
+  $('tb-slide').addEventListener('click', () => { if (typeof startAudio === 'function') startAudio(); const o = !(P.slideOpen || P.shojiOpen); P.slideOpen = o; P.shojiOpen = o; syncButtons(); if (typeof sfx === 'function') sfx('slide'); });
+  $('tb-car').addEventListener('click', () => { if (typeof startAudio === 'function') startAudio(); carShowcase(); });
+  $('tb-light').addEventListener('click', () => { if (typeof startAudio === 'function') startAudio(); cycleLighting(); });
+  $('tb-weather').addEventListener('click', () => { if (typeof startAudio === 'function') startAudio(); cycleWeather(); });
+  $('tb-sound').addEventListener('click', () => setMuted(P.audio));
+  $('tb-clean').addEventListener('click', () => setClean(true));
+  $('help-close').addEventListener('click', () => setGuide(false));
+  $('help-open').addEventListener('click', () => setGuide(true));
+  { let m = false, g = true; try { m = localStorage.getItem('house.muted') === '1'; g = localStorage.getItem('house.guide') !== '0'; } catch (e) { /* storage unavailable */ }
+    if (m) P.audio = false; setGuide(g); }
+  syncButtons(); onCameraMode();
+}
+let interactTimer = 0;
+function updateInteractHint(dt) {
+  interactTimer -= dt; if (interactTimer > 0) return; interactTimer = 0.15;
+  const el = $('interact'), ch = $('crosshair');
+  if (P.cameraMode !== 'Walkthrough') { el.classList.remove('on'); return; }
+  const n = nearestInteractable();
+  if (n) { el.innerHTML = `<kbd>E</kbd>&nbsp; ${n.label}`; el.classList.add('on'); ch.classList.add('hot'); } else { el.classList.remove('on'); ch.classList.remove('hot'); }
+}
 
 /* ------------------------------------------------------------------ 14. UI, GUI, AUTO QUALITY, MAIN LOOP */
 const perf = { ms: 16.7, fps: 60, slow: 0, fast: 0, acc: 0, frames: 0, sinceStart: 0 };
@@ -2464,6 +3232,7 @@ function renderReflection() {
   SH.uReflMatrix.value.copy(reflMatrix);
 }
 let frameCount = 0;
+const DBG = { noRefl: false, noShadow: false, noLights: false };
 function frame() {
   requestAnimationFrame(frame);
   const rawDt = clock.getDelta(), cdt = Math.min(rawDt, 0.05), dt = P.freezeScene ? 0 : cdt;
@@ -2472,7 +3241,9 @@ function frame() {
   updatePerf(rawDt);
   SH.uGust.value = clamp(0.5 + 0.9 * (fbm3(t * 0.12, 3.3, 1.1, 3, 77) - 0.5) * 2, 0, 1);
   SH.uHearthFlicker.value = 0.82 + 0.12 * Math.sin(t * 7.3) * Math.sin(t * 3.1 + 1.3) + 0.08 * (vnoise3(t * 9, 0.5, 0.5, 4) - 0.5) * 2;
-  if (typeof updateCameraModes === 'function') updateCameraModes(cdt, t); else updateFly(cdt);
+  updateCrossfades(cdt);
+  if (!P.holdCamera) updateCameraModes(cdt, t);
+  updateInteractHint(cdt);
   camera.updateMatrixWorld();
   if (typeof updateWorld === 'function') updateWorld(dt, t, cdt);
   updateDimmers();
@@ -2480,12 +3251,12 @@ function frame() {
   if (ENV.dirty && ENV.timer <= 0) { updateEnv(); ENV.timer = 0.25; }
   tickProbes();
   SHADOW.frame++;
-  if (SHADOW.dirty || SHADOW.frame % (P.quality === 'High' ? 2 : 3) === 0) {
+  if (!DBG.noShadow && (SHADOW.dirty || SHADOW.frame % (P.quality === 'High' ? 2 : 3) === 0)) {
     SHADOW.dirty = false;
     renderer.shadowMap.needsUpdate = true;
     renderer.setRenderTarget(RT.tiny); renderer.render(scene, shadowCam);
   }
-  renderReflection();
+  if (!DBG.noRefl) renderReflection();
   setCamLayers(camera, MAIN_LAYERS);
   renderer.setRenderTarget(RT.main); renderer.setClearColor(0x000000, 1); renderer.clear(); renderer.render(scene, camera);
   renderPost(cdt);
@@ -2510,6 +3281,7 @@ async function init() {
   try {
     await progress(0.03, 'Synthesising materials on the GPU');
     bakeAll(1);
+    let carPromise = null;
     await progress(0.25, 'Setting up probes');
     buildProbes();
     applyWeatherInstant(P.weather);
@@ -2523,7 +3295,11 @@ async function init() {
     await progress(0.55, 'Building the first floor and the roof');
     buildFirstFloor();
     buildLuminaires();
-    if (typeof buildInteriors === 'function') { await progress(0.62, 'Furnishing the rooms'); await buildInteriors(); }
+    carPromise = loadCar();
+    await progress(0.62, 'Furnishing the rooms');
+    buildInteriors();
+    await progress(0.68, 'Parking the car in the glass garage');
+    await carPromise;
     await progress(0.72, 'Merging geometry');
     flushBuckets();
     buildWater();
@@ -2545,7 +3321,8 @@ async function init() {
     const qs = new URLSearchParams(location.search);
     if (qs.get('cam')) { const c = qs.get('cam').split(',').map(Number); lookFrom(c[0], c[1], c[2], c[3], c[4], c[5]); P.cameraMode = 'Walkthrough'; }
     if (qs.get('wx')) applyWeatherInstant(WX_ORDER[+qs.get('wx')] || P.weather);
-    window.__H = { THREE, scene, camera, renderer, P, SH, lookFrom, applyWeatherInstant, captureAllProbes, perf, RT, ROOMS, LIGHTS, MAT, TEX, sun };
+    window.__H = { THREE, scene, camera, renderer, P, SH, lookFrom, applyWeatherInstant, captureAllProbes, perf, RT, ROOMS, LIGHTS, MAT, TEX, sun, DBG, DRONE, WALK, CTRL, onCameraMode, setQuality, RES };
+    if (qs.get('drone')) { P.cameraMode = 'Drone Maquette'; onCameraMode(); const d = qs.get('drone').split(',').map(Number); DRONE.az = d[0]; DRONE.el = d[1]; DRONE.r = d[2]; DRONE.auto = false; if (d.length > 3) { P.clipHeight = d[3]; SH.uClipHeight.value = d[3]; } }
     clock.getDelta();
     frame();
     setTimeout(() => { $('loader').style.opacity = 0; setTimeout(() => $('loader').remove(), 900); }, 150);
