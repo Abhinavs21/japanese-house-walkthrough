@@ -502,10 +502,10 @@ void surf(vec2 uv, out vec3 alb, out float rough, out float h, out float ao){
   float lo = pfbm(uv * 4.0, vec2(4.0), 5), mid = pfbm(uv * 30.0, vec2(30.0), 4);
   float de = min(bf, 1.0 - bf) * 0.15;
   float edge = 1.0 - smoothstep(0.0008, 0.003, de);
-  vec3 base = vec3(0.35, 0.345, 0.33) * (0.88 + 0.16 * bh + 0.16 * (lo - 0.5) + 0.06 * (mid - 0.5));
-  base *= 0.94 + 0.08 * ring * (0.6 + 0.4 * fineGrain);
+  vec3 base = vec3(0.36, 0.355, 0.345) * (0.93 + 0.08 * bh + 0.14 * (lo - 0.5) + 0.06 * (mid - 0.5));
+  base *= 0.975 + 0.035 * ring * (0.6 + 0.4 * fineGrain);
   vec3 w = pworley(uv * 160.0, vec2(160.0)); float pore = (1.0 - smoothstep(0.05, 0.15, w.x)) * step(0.88, w.z);
-  h = 0.001 * (ring - 0.5) + 0.0003 * (fineGrain - 0.5) + 0.0006 * edge - 0.0015 * (bh - 0.5) - 0.0008 * jEdge + 0.0003 * (mid - 0.5) - 0.001 * pore;
+  h = 0.0006 * (ring - 0.5) + 0.00025 * (fineGrain - 0.5) + 0.0006 * edge - 0.0012 * (bh - 0.5) - 0.0008 * jEdge + 0.0003 * (mid - 0.5) - 0.001 * pore;
   alb = base * (1.0 - 0.18 * jEdge) * (1.0 + 0.06 * edge) * (1.0 - 0.35 * pore);
   rough = 0.72 + 0.1 * (mid - 0.5) + 0.15 * pore - 0.05 * ring;
   ao = 1.0 - 0.3 * pore - 0.2 * jEdge;
@@ -2201,9 +2201,9 @@ function buildInteriors() {
   bx('emissiveWarm', -2.88, 0.27, 6.05, -1.27, 0.275, 6.42, { room: 'genkan', cast: false, receive: false });
   lathe('bizen', [[0, 0], [0.07, 0.01], [0.085, 0.08], [0.06, 0.2], [0.03, 0.27], [0.035, 0.3], [0, 0.3]], -1.75, 1.12, 6.25, 24, { room: 'genkan' });
   // tall pivot cedar door with a vertical bronze pull
-  { const g = new THREE.Group(); g.position.set(-0.9, LV.GENKAN, 6.6);
-    dynMesh(boxGeo(1.18, 2.9, 0.07), 'cedarUV', 'genkan', g).position.set(0.59, 1.45, 0);
-    const pull = dynMesh(cylGeo(0.014, 0.014, 0.9, 12), 'bronze', 'genkan', g); pull.position.set(1.0, 1.25, 0.075);
+  { const g = new THREE.Group(); g.position.set(-1.0, LV.GENKAN, 6.6);
+    dynMesh(boxGeo(1.2, 2.91, 0.07), 'cedarUV', 'genkan', g).position.set(0.6, 1.455, 0);
+    const pull = dynMesh(cylGeo(0.014, 0.014, 0.9, 12), 'bronze', 'genkan', g); pull.position.set(1.05, 1.25, 0.075);
     const pull2 = pull.clone(); pull2.position.z = -0.075; g.add(pull2);
     scene.add(g); setLayer(g, LAYER.GROUND_FLOOR); DYN.frontDoor = { g, open: 0, target: 0 }; }
   // hall console and a framed sumi-e
@@ -3335,7 +3335,7 @@ function orbitKeys(cx, cy, cz, r, a0, a1, h0, h1, lookY, n = 6) {
 }
 const SHOTS = [
   { en: 'The Floating Pavilion', jp: '浮かぶ縁側', dur: 11, fov: 46, fStop: 8,
-    keys: [{ t: 0, p: [13.5, 5.2, 17.5], l: [2.5, 2.4, 3.0] }, { t: 0.55, p: [8.6, 3.0, 13.4], l: [2.6, 2.5, 3.2] }, { t: 1, p: [6.2, 0.9, 11.2], l: [2.4, 2.9, 3.4] }] },
+    keys: [{ t: 0, p: [13.5, 5.2, 17.5], l: [2.5, 2.4, 3.0] }, { t: 0.55, p: [8.6, 2.6, 11.5], l: [2.6, 2.1, 3.2] }, { t: 1, p: [6.4, 0.75, 11.3], l: [2.6, 1.95, 4.2] }] },
   { en: "Glass Garage · Collector's Showcase", jp: '硝子のガレージ', dur: 11, fov: 42, fStop: 5.6,
     keys: orbitKeys(-6.0, 0.9, 2.8, 2.9, 2.4, 0.9, 1.05, 1.35, 0.6) },
   { en: 'Genkan & Courtyard Sightline', jp: '玄関から坪庭へ', dur: 9, fov: 50, fStop: 8, act: (t) => { if (t > 0.02 && DYN.frontDoor) DYN.frontDoor.target = 1; },
@@ -4170,7 +4170,8 @@ async function init() {
     updateDimmers();
     updateEnv();
     renderer.shadowMap.needsUpdate = true; renderer.setRenderTarget(RT.tiny); renderer.render(scene, shadowCam);
-    captureAllProbes(2);
+    captureAllProbes(1);
+    PROBES.dirty = true;        // second bounce settles progressively in the first frames
     await progress(1, 'Ready');
     lookFrom(5.0, 1.65, 17.5, 3.0, 2.2, 3.0);
     const qs = new URLSearchParams(location.search);
