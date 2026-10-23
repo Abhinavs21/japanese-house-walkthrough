@@ -477,6 +477,17 @@ void surf(vec2 uv, out vec3 alb, out float rough, out float h, out float ao){
   rough = 0.6 + 0.1 * (mid - 0.5) + 0.25 * pore + 0.15 * bug - 0.12 * cone - 0.05 * run;
   ao = 1.0 - 0.6 * cone - 0.4 * pore - 0.5 * bug - 0.3 * seam;
 }` },
+  // Smooth trowelled / poured concrete for worktops: no formwork, fine aggregate, soft mottling
+  concreteSmooth: { tile: 1.6, size: 1024, glsl: /* glsl */`
+void surf(vec2 uv, out vec3 alb, out float rough, out float h, out float ao){
+  float lo = pfbm(uv * 4.0, vec2(4.0), 5), mid = pfbm(uv * 30.0, vec2(30.0), 4), hi = pn(uv * 600.0, vec2(600.0));
+  vec3 w = pworley(uv * 220.0, vec2(220.0)); float agg = (1.0 - smoothstep(0.1, 0.3, w.x)) * step(0.82, w.z);
+  vec3 w2 = pworley(uv * 120.0, vec2(120.0)); float pore = (1.0 - smoothstep(0.03, 0.08, w2.x)) * step(0.95, w2.z);
+  vec3 c = vec3(0.40, 0.395, 0.38) * (0.9 + 0.16 * (lo - 0.5) + 0.07 * (mid - 0.5) + 0.03 * (hi - 0.5));
+  c = mix(c, vec3(0.52, 0.5, 0.47), agg * 0.5);
+  alb = c * (1.0 - 0.4 * pore);
+  h = 0.0002 * (mid - 0.5) - 0.0006 * pore; rough = 0.42 + 0.08 * (lo - 0.5) + 0.3 * pore - 0.05 * agg; ao = 1.0 - 0.4 * pore;
+}` },
   // Board-formed concrete: vertical cedar planks (0.15 m) imprinted with grain, paste fins at joints
   board: { tile: 1.8, size: 2048, glsl: /* glsl */`
 void surf(vec2 uv, out vec3 alb, out float rough, out float h, out float ao){
@@ -1732,7 +1743,8 @@ function patchedDepth(o, map, alphaTest) {
 const MATDEF = {
   concrete: { tex: 'concrete', solid: true, params: { roughness: 0.6 } },
   board: { tex: 'board', solid: true },
-  concreteFloor: { tex: 'concrete', tile: 2.4, rough: [0.7, 0.05], tint: 0xd8d4cc, solid: true },
+  concreteFloor: { tex: 'concreteSmooth', tile: 2.4, rough: [0.8, 0.0], tint: 0xd8d4cc, solid: true },
+  concreteTop: { tex: 'concreteSmooth', solid: true, params: { clearcoat: 0.3, clearcoatRoughness: 0.25 } },
   hinoki: { tex: 'hinoki', solid: true },
   hinokiX: { tex: 'hinoki', rot: 1, solid: true },
   hinokiUV: { tex: 'hinoki', mode: 'uv', solid: true },
@@ -2243,9 +2255,9 @@ function buildInteriors() {
   for (let x = 2.4; x < 8.5; x += 0.6) if (x < 4.5 || x > 6.4) bx('paintBlack', x - 0.003, 0.05, -5.181, x + 0.003, 2.05, -5.176, { room: 'kitchen', cast: false });
   // monolithic 3.8 m island: poured-concrete waterfall top + fluted walnut base, induction hob, sink, gooseneck tap
   const isl = { x0: 3.2, x1: 7.0, z0: -3.95, z1: -2.95 };
-  bx('concrete', isl.x0, 0.86, isl.z0, isl.x1, 0.94, isl.z1, { room: 'kitchen' });
-  bx('concrete', isl.x0, 0, isl.z0, isl.x0 + 0.08, 0.86, isl.z1, { room: 'kitchen' });
-  bx('concrete', isl.x1 - 0.08, 0, isl.z0, isl.x1, 0.86, isl.z1, { room: 'kitchen' });
+  bx('concreteTop', isl.x0, 0.86, isl.z0, isl.x1, 0.94, isl.z1, { room: 'kitchen' });
+  bx('concreteTop', isl.x0, 0, isl.z0, isl.x0 + 0.08, 0.86, isl.z1, { room: 'kitchen' });
+  bx('concreteTop', isl.x1 - 0.08, 0, isl.z0, isl.x1, 0.86, isl.z1, { room: 'kitchen' });
   bx('walnutTri', isl.x0 + 0.08, 0.06, isl.z0 + 0.05, isl.x1 - 0.08, 0.86, isl.z1 - 0.12, { room: 'kitchen' });
   for (let x = isl.x0 + 0.12; x < isl.x1 - 0.1; x += 0.045) cyl('walnut', 0.02, 0.02, 0.78, x, 0.07, isl.z1 - 0.11, 8, { room: 'kitchen' });
   bx('paintBlack', isl.x0 + 0.08, 0, isl.z0 + 0.1, isl.x1 - 0.08, 0.06, isl.z1 - 0.15, { room: 'kitchen' });
@@ -2675,7 +2687,7 @@ function buildFX() {
   }
   // hinoki bath water: dark glassy surface with slow ripples (probe reflections)
   const T = DYN.tubWater;
-  const wm = patchMaterial(new THREE.MeshPhysicalMaterial({ color: 0x0c1412, roughness: 0.04, metalness: 0, transparent: true, opacity: 0.88, ior: 1.33 }), {
+  const wm = patchMaterial(new THREE.MeshPhysicalMaterial({ color: 0x1a2a22, roughness: 0.02, metalness: 0, transparent: true, opacity: 0.5, ior: 1.33, envMapIntensity: 1.3, specularIntensity: 1 }), {
     room: 'bath', extraKey: 'tub', fsNormal: `{ vec2 p = vWP.xz * 6.0; float t = uTime; vec3 nn = normalize(vec3(sin(p.x * 1.3 + t * 1.1) * 0.04 + sin(p.y * 2.1 - t * 0.8) * 0.03, 1.0, cos(p.x * 1.7 - t * 0.9) * 0.03 + sin(p.y * 1.4 + t * 1.3) * 0.04)); normal = normalize((viewMatrix * vec4(nn, 0.0)).xyz); }` });
   const tw = new THREE.Mesh(new THREE.PlaneGeometry(T.x1 - T.x0, T.z1 - T.z0).rotateX(-Math.PI / 2), wm);
   tw.position.set((T.x0 + T.x1) / 2, T.y, (T.z0 + T.z1) / 2); tw.layers.set(LAYER.FIRST_FLOOR); tw.renderOrder = 1; scene.add(tw);
@@ -2797,7 +2809,7 @@ void main(){
 const WATER_FS = /* glsl */`
 uniform sampler2D tRefl; uniform mat4 uReflMatrix; uniform float uTime; uniform vec3 uSunDir; uniform vec3 uSunColor;
 uniform float uWind; uniform vec3 uDeep; uniform float uRain; uniform sampler2D tRipple; uniform vec4 uRippleXf; uniform float uRippleOn;
-uniform vec3 uSkyCol;
+uniform vec3 uSkyCol; uniform vec3 uDrip;
 varying vec3 vWP;
 #include <fog_pars_fragment>
 ${GLSL_NOISE}
@@ -2810,6 +2822,9 @@ float hgt(vec2 p){
   h += (vnoise(p * 9.0 + vec2(t * 0.6, t * 0.4)) - 0.5) * 0.0012 * (0.3 + uWind * 2.0);
   h += (vnoise(p * 23.0 - vec2(t * 0.9, -t * 0.7)) - 0.5) * 0.0005 * (0.3 + uWind * 2.0);
   if (uRippleOn > 0.5) { vec2 ruv = (p - uRippleXf.xy) / uRippleXf.zw; if (all(greaterThan(ruv, vec2(0.0))) && all(lessThan(ruv, vec2(1.0)))) h += texture2D(tRipple, ruv).r; }
+  // tsukubai: concentric rings from the kakehi drip
+  float dr = length(p - uDrip.xy);
+  if (dr < 0.4) { float ph = uDrip.z; h += sin((dr - ph * 0.35) * 70.0) * exp(-abs(dr - ph * 0.35) * 30.0) * (1.0 - ph) * 0.002; }
   return h;
 }
 void main(){
@@ -2843,13 +2858,55 @@ void main(){
   gl_FragColor = vec4(col, alpha);
   #include <fog_fragment>
 }`;
+/* --- Ripple simulation: damped 2D wave equation on a 256 x 128 grid over the pool (ping-pong FBOs) */
+const SIM = { w: 256, h: 128, x0: 0.4, z0: 6.7, sx: 8.8, sz: 4.1, a: null, b: null, pass: null, drops: [] };
+const SIM_FS = /* glsl */`
+uniform sampler2D tPrev; uniform vec2 uTexel; uniform vec4 uDrops[8]; uniform int uNDrops; uniform vec4 uXf; varying vec2 vUv;
+void main(){
+  vec4 s = texture2D(tPrev, vUv);                       // r = height, g = previous height
+  float n = texture2D(tPrev, vUv + vec2(0.0, uTexel.y)).r, so = texture2D(tPrev, vUv - vec2(0.0, uTexel.y)).r;
+  float e = texture2D(tPrev, vUv + vec2(uTexel.x, 0.0)).r, w = texture2D(tPrev, vUv - vec2(uTexel.x, 0.0)).r;
+  float h = (n + so + e + w) * 0.5 - s.g;
+  h *= 0.985;
+  vec2 wp = vec2(uXf.x + vUv.x * uXf.z, uXf.y + vUv.y * uXf.w);
+  for (int i = 0; i < 8; i++) { if (i >= uNDrops) break; vec4 d = uDrops[i]; float r = length(wp - d.xy); h += d.w * exp(-r * r / (d.z * d.z)); }
+  gl_FragColor = vec4(clamp(h, -0.05, 0.05), s.r, 0.0, 1.0);
+}`;
+function buildRipples() {
+  const o = { type: THREE.HalfFloatType, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false, wrapS: THREE.ClampToEdgeWrapping, wrapT: THREE.ClampToEdgeWrapping };
+  SIM.a = new THREE.WebGLRenderTarget(SIM.w, SIM.h, o); SIM.b = new THREE.WebGLRenderTarget(SIM.w, SIM.h, o);
+  SIM.pass = shaderPass(SIM_FS, { tPrev: { value: null }, uTexel: { value: new THREE.Vector2(1 / SIM.w, 1 / SIM.h) }, uDrops: { value: Array.from({ length: 8 }, () => new THREE.Vector4()) }, uNDrops: { value: 0 }, uXf: { value: new THREE.Vector4(SIM.x0, SIM.z0, SIM.sx, SIM.sz) } });
+  waterMat.uniforms.uRippleXf.value.set(SIM.x0, SIM.z0, SIM.sx, SIM.sz); waterMat.uniforms.uRippleOn.value = 1;
+}
+function addDrop(x, z, r = 0.06, s = -0.004) { if (SIM.drops.length < 8) SIM.drops.push([x, z, r, s]); }
+SIM.acc = 0;
+function stepRipples(dt) {
+  if (!SIM.pass) return;
+  // rain rings feed the sim too
+  if (SH.uRain.value > 0.05 && Math.random() < dt * 40 * SH.uRain.value) addDrop(SIM.x0 + Math.random() * SIM.sx, SIM.z0 + Math.random() * SIM.sz, 0.03, -0.0015);
+  SIM.acc += dt; let n = 0;
+  while (SIM.acc > 1 / 90 && n < 3) {
+    SIM.acc -= 1 / 90; n++;
+    const u = SIM.pass.uniforms; u.tPrev.value = SIM.a.texture;
+    u.uNDrops.value = SIM.drops.length; SIM.drops.forEach((d, i) => u.uDrops.value[i].set(d[0], d[1], d[2], d[3])); SIM.drops.length = 0;
+    SIM.pass.render(SIM.b); const t = SIM.a; SIM.a = SIM.b; SIM.b = t;
+  }
+  waterMat.uniforms.tRipple.value = SIM.a.texture;
+}
+const _wp = new THREE.Plane(new THREE.Vector3(0, 1, 0), -LV.WATER), _hit = new THREE.Vector3();
+function clickWater(ray) {
+  if (!ray.ray.intersectPlane(_wp, _hit)) return;
+  if (inPool(_hit.x, _hit.z) && _hit.distanceTo(camera.position) < 30) { addDrop(_hit.x, _hit.z, 0.08, -0.008); blip({ freq: 900, freqEnd: 300, vol: 0.12, dur: 0.18 }); }
+  else if (DYN.tsukubai && Math.hypot(_hit.x - DYN.tsukubai.x, _hit.z - DYN.tsukubai.z) < 0.5) { TSUKU.drip = 1; blip({ freq: 1400, freqEnd: 600, vol: 0.1, dur: 0.12 }); }
+}
+const TSUKU = { drip: 0, t: 0 };
 let waterMat = null;
 function buildWater() {
   waterMat = new THREE.ShaderMaterial({
     uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
       tRefl: { value: null }, uReflMatrix: { value: reflMatrix }, uTime: SH.uTime, uSunDir: SH.uSunDir, uSunColor: SH.uSunColor,
       uWind: SH.uWind, uDeep: { value: new THREE.Color(0.004, 0.006, 0.007) }, uRain: SH.uRain, tRipple: { value: null },
-      uRippleXf: { value: new THREE.Vector4(0, 6.5, 9.5, 4.5) }, uRippleOn: { value: 0 }, uSkyCol: { value: new THREE.Color() },
+      uRippleXf: { value: new THREE.Vector4(0, 6.5, 9.5, 4.5) }, uRippleOn: { value: 0 }, uSkyCol: { value: new THREE.Color() }, uDrip: { value: new THREE.Vector3(0, 0, 1) },
     }]),
     vertexShader: WATER_VS, fragmentShader: WATER_FS, transparent: true, fog: true, depthWrite: true,
     blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor,
@@ -3292,7 +3349,7 @@ const SHOTS = [
   { en: 'Cantilevered Timber Ascent', jp: '浮き階段', dur: 10, fov: 50, fStop: 8,
     keys: [{ t: 0, p: [6.6, 1.55, 5.4], l: [8.0, 1.4, 2.0] }, { t: 0.5, p: [7.4, 2.7, 2.4], l: [8.0, 3.6, -0.6] }, { t: 1, p: [7.6, 4.85, -0.9], l: [5.5, 4.5, -3.6] }] },
   { en: 'Mezzanine Gallery Bridge', jp: '中二階の回廊', dur: 9, fov: 52, fStop: 8,
-    keys: [{ t: 0, p: [2.5, 4.75, -1.5], l: [6.2, 0.3, 4.6] }, { t: 1, p: [5.6, 4.85, -1.2], l: [3.0, 0.6, 4.4] }] },
+    keys: [{ t: 0, p: [6.7, 4.95, 0.35], l: [1.6, 1.2, 3.2] }, { t: 1, p: [6.2, 4.9, 0.45], l: [0.2, 2.6, 0.6] }] },
   { en: 'Washitsu & Yukimi-Shoji', jp: '和室と雪見障子', dur: 10, fov: 54, fStop: 5.6, act: (t) => { P.shojiOpen = t > 0.18; },
     keys: [{ t: 0, p: [-0.25, LV.WASHITSU + 0.5, -4.55], l: [-0.3, LV.WASHITSU + 0.85, -2.2] }, { t: 1, p: [0.15, LV.WASHITSU + 0.5, -4.2], l: [-0.6, LV.WASHITSU + 0.95, -2.2] }] },
   { en: 'Master Suite in the Trees', jp: '木々の中の寝室', dur: 9, fov: 50, fStop: 8,
@@ -3300,7 +3357,7 @@ const SHOTS = [
   { en: 'Hinoki Ofuro Soaking Bath', jp: '檜風呂', dur: 10, fov: 46, fStop: 4, act: () => { P.louverTilt = 0.62; },
     keys: [{ t: 0, p: [-5.6, 4.85, 2.9], l: [-7.6, 3.75, 5.3] }, { t: 1, p: [-6.3, 4.45, 3.7], l: [-7.7, 3.7, 5.3] }] },
   { en: 'Twilight Reflections', jp: '黄昏の水鏡', dur: 12, fov: 48, fStop: 8, act: (t) => { TOUR.lift = smoothstep(0.1, 0.8, t); },
-    keys: [{ t: 0, p: [4.8, 0.55, 9.2], l: [3.6, 2.6, 4.0] }, { t: 0.5, p: [5.6, 1.4, 11.2], l: [3.4, 2.8, 3.6] }, { t: 1, p: [6.6, 2.6, 13.6], l: [3.0, 3.0, 3.0] }] },
+    keys: [{ t: 0, p: [4.6, 0.5, 9.3], l: [3.6, 2.6, 4.0] }, { t: 0.5, p: [5.4, 1.2, 10.7], l: [3.4, 2.8, 3.6] }, { t: 1, p: [6.2, 2.1, 11.45], l: [3.0, 3.1, 3.0] }] },
 ];
 const TOUR = { i: 0, t: 0, fade: 1, lift: 0, cap: '', started: false };
 const _tp = new THREE.Vector3(), _tl = new THREE.Vector3();
@@ -3603,6 +3660,12 @@ function updateWorld(dt, t, cdt) {
   if (DYN.louvres) { const a = lerp(0.05, 1.35, P.louverTilt); for (const l of DYN.louvres) if (l.userData.side) l.rotation.z = a; else l.rotation.x = a; }
   if (DYN.slide) DYN.slide.update(cdt);
   updateFX(dt, t);
+  stepRipples(dt);
+  if (DYN.tsukubai && waterMat) {   // a drop every ~2.4 s from the bamboo spout
+    TSUKU.t += dt; if (TSUKU.t > 2.4) { TSUKU.t = 0; TSUKU.drip = 0.001; }
+    if (TSUKU.drip > 0) TSUKU.drip = Math.min(1, TSUKU.drip + dt * 0.7);
+    waterMat.uniforms.uDrip.value.set(DYN.tsukubai.x, DYN.tsukubai.z, TSUKU.drip > 0 ? TSUKU.drip : 1);
+  }
   // car: welcome sequence (DRLs sweep, then headlights, tail bar, cabin glow), idle rock, wheel spin
   CAR.on += clamp(CAR.onTarget - CAR.on, -cdt * 0.8, cdt * 0.8);
   const m = CAR.mats;
@@ -3700,7 +3763,7 @@ function updateWalk(dt) {
       else { [ax, az] = collide(WALK.x, nz, WALK.y, 0.38); const fb = floorAt(ax, az, WALK.y); if (fb > -50 && fb > WALK.y - 0.45) { WALK.x = ax; WALK.z = az; WALK.y = fb; } }
     }
     WALK.stepT = (WALK.stepT || 0) + sp * dt;
-    if (WALK.stepT > (run ? 0.85 : 0.7)) { WALK.stepT = 0; if (typeof footstep === 'function') footstep(WALK.x, WALK.y, WALK.z); }
+    if (WALK.stepT > (run ? 0.85 : 0.7)) { WALK.stepT = 0; footstep(WALK.x, WALK.y, WALK.z); for (const st of STONES) if (Math.hypot(WALK.x - st.x, WALK.z - st.z) < st.r) addDrop(st.x + 0.35, st.z, 0.1, -0.003); }
   } else { const fy = floorAt(WALK.x, WALK.z, WALK.y); if (fy > -50) WALK.y = fy; }
   WALK.eye = k.KeyQ ? 0.85 : 1.62;
   WALK.eyeCur += (WALK.eye - WALK.eyeCur) * (1 - Math.exp(-dt * 6));
@@ -3756,7 +3819,8 @@ function cycleCameraMode() {
   toast(P.cameraMode === 'Cinematic' ? 'Film tour' : P.cameraMode === 'Walkthrough' ? 'Walkthrough · WASD, drag to look' : 'Drone maquette · drag to orbit, Clip height in the panel');
 }
 function updateCameraModes(dt, t) {
-  if (P.cameraMode === 'Walkthrough') updateWalk(dt);
+  if (P.cameraMode === 'Fly') updateFly(dt);
+  else if (P.cameraMode === 'Walkthrough') updateWalk(dt);
   else if (P.cameraMode === 'Drone Maquette') {
     if (CTRL.dragging) { DRONE.az = -CTRL.yaw; DRONE.el = 0.62 - CTRL.pitch; } else { CTRL.yaw = -DRONE.az; CTRL.pitch = 0.62 - DRONE.el; }
     updateDrone(dt);
@@ -4088,6 +4152,7 @@ async function init() {
     await progress(0.72, 'Merging geometry');
     flushBuckets();
     buildWater();
+    buildRipples();
     buildFX();
     makeTargets();
     buildPost();
@@ -4107,7 +4172,7 @@ async function init() {
     await progress(1, 'Ready');
     lookFrom(5.0, 1.65, 17.5, 3.0, 2.2, 3.0);
     const qs = new URLSearchParams(location.search);
-    if (qs.get('cam')) { const c = qs.get('cam').split(',').map(Number); lookFrom(c[0], c[1], c[2], c[3], c[4], c[5]); P.cameraMode = 'Walkthrough'; }
+    if (qs.get('cam')) { const c = qs.get('cam').split(',').map(Number); lookFrom(c[0], c[1], c[2], c[3], c[4], c[5]); P.cameraMode = qs.get('fly') ? 'Fly' : 'Walkthrough'; }
     if (qs.get('wx')) applyWeatherInstant(WX_ORDER[+qs.get('wx')] || P.weather);
     if (qs.get('shot')) { P.cameraMode = 'Cinematic'; onCameraMode(); TOUR.i = +qs.get('shot'); TOUR.t = qs.get('st') ? +qs.get('st') : SHOTS[TOUR.i].dur * 0.55; TOUR.started = true; TOUR.pause = !!qs.get('pause'); }
     window.__H = { THREE, scene, camera, renderer, P, SH, lookFrom, applyWeatherInstant, captureAllProbes, perf, RT, ROOMS, LIGHTS, MAT, TEX, sun, DBG, DRONE, WALK, CTRL, onCameraMode, setQuality, RES, PROBES, FX, GARDEN, ROOM_LIGHTS, PATCHED, TOUR, SHOTS, setWeather, setLighting };
