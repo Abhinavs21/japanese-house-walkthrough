@@ -1805,6 +1805,7 @@ const MATDEF = {
   leather: { tex: 'leather', mode: 'uv' },
   leatherBlack: { tex: 'leather', mode: 'uv', tint: 0x2a2624 },
   bark: { tex: 'bark', mode: 'uv' },
+  oliveBark: { tex: 'bark', mode: 'uv', tint: 0xb3ab9c },
   pinebark: { tex: 'pinebark', mode: 'uv' },
   bamboo: { tex: 'bamboo', mode: 'uv', params: { clearcoat: 0.3, clearcoatRoughness: 0.4 } },
   travertine: { tex: 'travertine', solid: true },
@@ -2198,7 +2199,7 @@ function andonLamp(x, y, z, room) {
   for (const yy of [y + 0.04, y + h - 0.02]) { bx('lacquer', x - w / 2, yy - 0.012, z - w / 2, x + w / 2, yy, z - w / 2 + 0.012, { room }); bx('lacquer', x - w / 2, yy - 0.012, z + w / 2 - 0.012, x + w / 2, yy, z + w / 2, { room });
     bx('lacquer', x - w / 2, yy - 0.012, z - w / 2, x - w / 2 + 0.012, yy, z + w / 2, { room }); bx('lacquer', x + w / 2 - 0.012, yy - 0.012, z - w / 2, x + w / 2, yy, z + w / 2, { room }); }
 }
-function chair(x, z, ry, room, mat = 'smokedOak', seatMat = 'linenFlax') {
+function chair(x, z, ry, room, mat = 'smokedOak', seatMat = 'linenFlax', y = 0) {
   // timber side chair. Local frame: the sitter faces +z, the back is at -z; ry turns the chair (0 faces +z).
   const parts = [];
   const leg = (lx, lz, h, topR, botR) => { const c = cylGeo(topR, botR, h, 10); c.translate(0, h / 2, 0); place(c, lx, 0, lz, 0, lz * 0.06, -lx * 0.08); parts.push(c); };
@@ -2213,9 +2214,9 @@ function chair(x, z, ry, room, mat = 'smokedOak', seatMat = 'linenFlax') {
     parts.push(new THREE.TubeGeometry(rail, 20, rr, 8));
   }
   const pad = cushionGeo(0.43, 0.04, 0.41, 0.014, 0.2); place(pad, 0, 0.428, 0.005);
-  for (const p of parts) { place(p, x, 0, z, ry); addGeo(mat, p, { room }); }
-  place(pad, x, 0, z, ry); addGeo(seatMat, pad, { room });
-  WALLS.push({ x0: x - 0.24, z0: z - 0.24, x1: x + 0.24, z1: z + 0.24, y0: 0, y1: 0.85, furniture: true });
+  for (const p of parts) { place(p, x, y, z, ry); addGeo(mat, p, { room }); }
+  place(pad, x, y, z, ry); addGeo(seatMat, pad, { room });
+  WALLS.push({ x0: x - 0.24, z0: z - 0.24, x1: x + 0.24, z1: z + 0.24, y0: y, y1: y + 0.85, furniture: true });
 }
 function books(x0, x1, y, z0, depth, room, axis = 'x', seed = 1) {
   // a run of books standing on a shelf, varied heights, spines facing +z (axis x) or +x (axis z)
@@ -2307,8 +2308,6 @@ function buildInteriors() {
   cyl('bamboo', 0.018, 0.022, 0.09, 5.32, PY + 0.372, 4.02, 12, { room: 'living' });
   // pit floor + the step-down timber edges
   for (const [a, b, c, d] of [[pit.x0, pit.z0, pit.x1, pit.z0 + 0.04], [pit.x0, pit.z1 - 0.04, pit.x1, pit.z1], [pit.x0, pit.z0, pit.x0 + 0.04, pit.z1], [pit.x1 - 0.04, pit.z0, pit.x1, pit.z1]]) bx('hinokiUV', a, PY, b, c, 0.005, d, { room: 'living' });
-  // a tall mature olive in a raw concrete planter by the glass
-  cyl('concrete', 0.32, 0.28, 0.55, 8.1, 0, 2.2, 24, { room: 'living' });
   /* ---------- KITCHEN & DINING ---------- */
   // full-height walnut cabinetry along the north wall with a backlit travertine niche
   bx('walnutTri', 2.05, 0, -5.8, 8.5, 2.1, -5.18, { room: 'kitchen', skip: ['nz'] });
@@ -2346,7 +2345,7 @@ function buildInteriors() {
     const g = new THREE.ExtrudeGeometry(shape, { depth: 0.065, bevelEnabled: true, bevelThickness: 0.008, bevelSize: 0.008, bevelSegments: 3, curveSegments: 1 });
     g.rotateX(-Math.PI / 2); place(g, tb.x, 0.692, tb.z); addGeo('hinokiSlab', g, { room: 'kitchen' }); }
   for (const dx of [-1.15, 1.15]) { bx('smokedOak', tb.x + dx - 0.04, 0, tb.z - 0.42, tb.x + dx + 0.04, 0.7, tb.z + 0.42, { room: 'kitchen' }); }
-  for (let i = 0; i < 3; i++) { chair(tb.x - 0.95 + i * 0.95, tb.z - 0.82, 0, 'kitchen'); if (i !== 1) chair(tb.x - 0.95 + i * 0.95, tb.z + 0.82, Math.PI, 'kitchen'); }
+  for (let i = 0; i < 3; i++) { chair(tb.x - 0.95 + i * 0.95, tb.z - 0.82, 0, 'kitchen'); chair(tb.x - 0.95 + i * 0.95, tb.z + 0.82, Math.PI, 'kitchen'); }
   chair(tb.x - 1.85, tb.z, Math.PI / 2, 'kitchen'); chair(tb.x + 1.85, tb.z, -Math.PI / 2, 'kitchen');
   WALLS.push({ x0: tb.x - 1.5, z0: tb.z - 0.55, x1: tb.x + 1.5, z1: tb.z + 0.55, y0: 0, y1: 0.75 });
   bx('brass', tb.x - 1.1, 1.82, tb.z - 0.04, tb.x + 1.1, 1.86, tb.z + 0.04, { room: 'kitchen' });
@@ -2387,7 +2386,7 @@ function buildInteriors() {
   for (let y = F1 + 0.35; y < F1 + 2.5; y += 0.42) { bx('oak', 2.3, y, -5.8, 7.0, y + 0.03, -5.5, { room: 'mezz' }); books(2.4, 6.9, y + 0.03, -5.78, 0.24, 'mezz', 'x', Math.floor(y * 13)); }
   bx('oak', 3.0, F1 + 0.7, -0.6, 4.8, F1 + 0.74, 0.1, { room: 'mezz' });
   for (const x of [3.05, 4.75]) bx('blackSteel', x - 0.015, F1, -0.55, x + 0.015, F1 + 0.7, 0.05, { room: 'mezz' });
-  chair(3.9, -1.0, 0, 'mezz', 'oak', 'linenFlax');
+  chair(3.9, -1.0, 0, 'mezz', 'oak', 'linenFlax', F1);
   // Akari washi floor lantern (Noguchi style): pleated glowing shade, bamboo ribs, black steel tripod
   akariLamp(5.4, F1, -0.2, 'mezz');
   addLight({ type: 1, pos: [5.4, F1 + 0.55, -0.2], kelvin: 2500, lm: 0.4, size: 0.18 });
@@ -2554,6 +2553,24 @@ function leafAtlas(kind) {
           g.restore();
         }
       }
+    } else if (kind === 'olive') {
+      const sprays = 3 + Math.floor(r() * 2);
+      for (let sp = 0; sp < sprays; sp++) {
+        const sx = ox + cell * (0.2 + r() * 0.6), sy = oy + cell * (0.2 + r() * 0.6), ang = r() * Math.PI * 2, len = cell * (0.28 + r() * 0.16);
+        const ex = sx + Math.cos(ang) * len, ey = sy + Math.sin(ang) * len;
+        g.strokeStyle = '#4a4232'; g.lineWidth = 1.6; g.beginPath(); g.moveTo(sx, sy); g.lineTo(ex, ey); g.stroke();
+        for (let k = 1; k <= 7; k++) {
+          const t = k / 8, qx = sx + (ex - sx) * t, qy = sy + (ey - sy) * t;
+          for (const side of [-1, 1]) {
+            const ll = cell * (0.07 + r() * 0.04), lw = ll * 0.16, a2 = ang + side * (0.6 + r() * 0.35);
+            const silver = r() < 0.35;
+            g.save(); g.translate(qx, qy); g.rotate(a2 - Math.PI / 2);
+            g.beginPath(); g.moveTo(0, 0); g.quadraticCurveTo(lw, ll * 0.45, 0, ll); g.quadraticCurveTo(-lw, ll * 0.45, 0, 0);
+            g.fillStyle = silver ? `rgb(${150 + r() * 20 | 0},${160 + r() * 18 | 0},${136 + r() * 16 | 0})` : `rgb(${84 + r() * 22 | 0},${100 + r() * 24 | 0},${70 + r() * 16 | 0})`;
+            g.fill(); g.restore();
+          }
+        }
+      }
     } else {   // pine: dense needle tufts
       for (let t = 0; t < 7; t++) {
         const cx = ox + cell * (0.25 + r() * 0.5), cy = oy + cell * (0.3 + r() * 0.4);
@@ -2570,7 +2587,7 @@ function leafAtlas(kind) {
 }
 function leafMaterial(map, room, o = {}) {
   const m = new THREE.MeshPhysicalMaterial({ map, alphaTest: 0.45, alphaToCoverage: true, side: THREE.DoubleSide, roughness: o.rough ?? 0.55, sheen: 0.3, sheenRoughness: 0.5, sheenColor: 0xffffff, envMapIntensity: 0.8 });
-  patchMaterial(m, { room, exterior: true, foliage: true, leaf: true, transl: o.transl ?? 0.8, keepMap: true, windW: o.windW || '1.0', extraKey: 'leaf',
+  patchMaterial(m, { room, exterior: !(ROOM[room] && room !== 'court'), foliage: true, leaf: true, transl: o.transl ?? 0.8, keepMap: true, windW: o.windW || '1.0', extraKey: 'leaf',
     uniforms: {}, });
   const prevOBC = m.onBeforeCompile;
   m.onBeforeCompile = (sh) => {
@@ -2580,8 +2597,8 @@ function leafMaterial(map, room, o = {}) {
   const baseKey = m.customProgramCacheKey; m.customProgramCacheKey = () => baseKey() + '|leafcard';
   return m;
 }
-function leafCards(list, mat, depthMat, layer) {
-  list = list.filter((c) => {
+function leafCards(list, mat, depthMat, layer, indoor = false) {
+  if (!indoor) list = list.filter((c) => {
     const m = c.s * 0.55 + 0.15;   // card half-diagonal plus a margin
     const inHouseBox = c.x > HOUSE.x0 - m && c.x < HOUSE.x1 + m && c.z > HOUSE.z0 - m && c.z < 6.75 + m && c.y < LV.ROOF_TOP + m;
     const inCourt = c.x > COURT.x0 + 0.2 && c.x < COURT.x1 - 0.2 && c.z > COURT.z0 + 0.2 && c.z < COURT.z1 - 0.2;
@@ -2694,6 +2711,17 @@ function buildGarden() {
     for (const c of pine.cards) { c.rx = -Math.PI / 2 + (Math.random() - 0.5) * 0.5; c.y += 0.05; pcards.push(c); }
   }
   leafCards(pcards, leafMaterial(PINE, 'ext', { transl: 0.25, rough: 0.7, windW: '0.4' }), patchedDepth({ windW: '0.4' }, PINE, 0.45), LAYER.EXTERIOR);
+  // ---- an olive tree in a smooth poured-concrete planter by the living-room glass (indoors: no wind, no weather)
+  { const OLIVE = leafAtlas('olive'), ox2 = 2.5, oz2 = 5.5;
+    cyl('concreteTop', 0.36, 0.31, 0.5, ox2, 0, oz2, 40, { room: 'living' });
+    cyl('paintBlack', 0.335, 0.335, 0.02, ox2, 0.47, oz2, 40, { room: 'living', cast: false });                  // soil
+    for (let k = 0; k < 14; k++) { const a = k * 2.4, rr3 = 0.08 + (k % 5) * 0.045; const pb = new THREE.SphereGeometry(0.022 + (k % 3) * 0.008, 8, 6); place(pb, ox2 + Math.cos(a) * rr3, 0.495, oz2 + Math.sin(a) * rr3, 0, 0, 0, [1, 0.55, 1]); addGeo('granite', pb, { room: 'living', cast: false }); }
+    const olive = growTree({ seed: 31, depth: 3, kids: 2, spread: 0.95, up: 0.5, wiggle: 0.55, taper: 0.45, lenDecay: 0.7, radDecay: 0.62, cardsPerTip: 9, cluster: 0.3, cardSize: 0.34,
+      trunks: [[ox2, 0.48, oz2, 0.25, -0.12, 1.0, 0.05], [ox2 + 0.03, 0.48, oz2 - 0.02, -0.2, 0.18, 0.85, 0.038]] });
+    for (const g of olive.barkGeos) addGeo('oliveBark', g, { room: 'living' });
+    for (const c of olive.cards) c.y = Math.min(c.y, 2.85);
+    leafCards(olive.cards, leafMaterial(OLIVE, 'living', { transl: 0.45, rough: 0.6, windW: '0.06' }), patchedDepth({ windW: '0.06' }, OLIVE, 0.45), LAYER.GROUND_FLOOR, true);
+    WALLS.push({ x0: ox2 - 0.38, z0: oz2 - 0.38, x1: ox2 + 0.38, z1: oz2 + 0.38, y0: 0, y1: 2.5 }); }
   // ---- moss mounds and two minimalist granite toro lanterns
   for (const [x, z, r] of [[-2.9, 8.2, 0.9], [-0.2, 11.2, 0.7], [7.7, 11.0, 1.1], [10.6, 8.5, 0.8], [-10.8, 7.4, 1.0]]) { const m = new THREE.SphereGeometry(1, 28, 12, 0, Math.PI * 2, 0, Math.PI / 2); place(m, x, LV.GRADE - 0.02, z, 0, 0, 0, [r, r * 0.35, r * 0.8]); addGeo('moss', m, { room: 'ext' }); }
   for (const [x, z] of [[-1.1, 8.55], [9.7, 10.9]]) {
