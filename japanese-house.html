@@ -1083,7 +1083,7 @@ renderer.shadowMap.autoUpdate = false;
 MAX_ANISO = Math.min(8, renderer.capabilities.getMaxAnisotropy());
 const scene = new THREE.Scene();
 scene.fog = new THREE.FogExp2(0x8a7d70, 0.003);
-const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.05, 400);
+const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.08, 400);
 camera.position.set(4, 1.6, 18);
 // No global clip planes: any discard in a shader turns off the GPU's hidden-surface removal / early-Z.
 // The mirror pass clips with an oblique near plane instead (Lengyel), and the maquette section cut is
@@ -1748,6 +1748,7 @@ const MATDEF = {
   hinoki: { tex: 'hinoki', solid: true },
   hinokiX: { tex: 'hinoki', rot: 1, solid: true },
   hinokiUV: { tex: 'hinoki', mode: 'uv', solid: true },
+  hinokiTub: { tex: 'hinoki', mode: 'uv', tint: 0xd6ab78, rough: [0.75, 0.0], solid: true, params: { clearcoat: 0.25, clearcoatRoughness: 0.35 } },
   hinokiDeck: { tex: 'hinoki', rot: 1, tint: 0xb79f86, rough: [1.1, 0.08], solid: true },
   cedarUV: { tex: 'hinoki', mode: 'uv', tint: 0xc6905e, rough: [1.2, 0.05], solid: true },
   yakisugi: { tex: 'yakisugi', solid: true, params: { sheen: 0.35, sheenRoughness: 0.4, sheenColor: 0x6a6c70 } },
@@ -1761,7 +1762,7 @@ const MATDEF = {
     for (int k = 0; k < 12; k++) { vec3 R = uRake[k]; if (R.z <= 0.0) continue; float d = length(vWP.xz - R.xy) - R.z; if (d < rr) { rr = d; rc = R.xy; } }
     float coord = rr < 0.55 ? rr : vWP.z; vec2 grad = rr < 0.55 ? normalize(vWP.xz - rc + 1e-4) : vec2(0.0, 1.0);
     float ph = coord / 0.075 * 6.2831853;
-    float k2 = smoothstep(-0.04, 0.03, rr) * (1.0 - wxSnow);
+    float k2 = smoothstep(-0.04, 0.03, rr) * (1.0 - wxSnow) * (1.0 - smoothstep(0.9, 2.4, fwidth(ph)));   // no moire at distance
     nW = normalize(nW + vec3(grad.x, 0.0, grad.y) * cos(ph) * 0.42 * k2);
     diffuseColor.rgb *= 1.0 + 0.07 * sin(ph) * k2;
   }
@@ -1804,6 +1805,10 @@ const MATDEF = {
   rubber: { params: { color: 0x101010, roughness: 0.85 } },
   glass: { glass: true, absorb: 0.015, params: { color: 0x000000, roughness: 0.02, metalness: 0, ior: 1.52, specularIntensity: 1 }, blend: true },
   glassFrosted: { glass: true, absorb: 0.55, params: { color: 0xe8ece8, roughness: 0.35, metalness: 0, ior: 1.52 }, blend: true },
+  glassReeded: { glass: true, absorb: 0.42, params: { color: 0x2a2018, roughness: 0.08, metalness: 0, ior: 1.52 }, blend: true, extraKey: 'reeded',
+    fsNormal: `{ vec3 gN = normalize(vWN) * (gl_FrontFacing ? 1.0 : -1.0); vec3 T = normalize(cross(vec3(0.0, 1.0, 0.0), gN) + 1e-5);
+      float ph = dot(vWP, T) * 6.2831853 / 0.022; float aa = 1.0 - smoothstep(0.8, 2.2, fwidth(ph));   // fade reeds before they alias
+      vec3 nr = normalize(gN + T * cos(ph) * 0.55 * aa); normal = normalize((viewMatrix * vec4(nr, 0.0)).xyz); }` },
   glassEdge: { params: { color: 0x2c5a48, roughness: 0.05, metalness: 0, transmission: 0 } },
   mirror: { params: { color: 0xffffff, metalness: 1, roughness: 0.02 } },
   emissive: { params: { color: 0x000000, emissive: 0xffffff, emissiveIntensity: 1, roughness: 0.4 } },
@@ -1898,7 +1903,7 @@ function buildSite() {
   archBox(1.15, 2.3, SITE.z1 - 0.18, 2.45, 2.42, SITE.z1 - 0.08, 'corten', { room: 'ext' });
   archBox(-8.55, -0.1, SITE.z1 + 0.02, -3.45, 2.2, SITE.z1 + 0.08, 'corten', { room: 'ext' });
   // street beyond the south wall + kerb, a neighbour's wall to the east
-  archBox(-90, -0.24, SITE.z1 + 0.3, 90, -0.20, SITE.z1 + 8, 'basaltExt', { room: 'ext', tag: 'far' });
+  archBox(-90, -0.3, SITE.z1 + 0.3, 90, -0.12, SITE.z1 + 8, 'basaltExt', { room: 'ext', tag: 'far' });
 }
 
 /* ------------------------------------------------------------------ 7. STONES, STEPPING SLABS, TSUKUBAI, LANTERNS */
@@ -2056,10 +2061,10 @@ function buildFirstFloor() {
   archBox(-3.0, LV.ROOF_BOT - 0.35, 6.45, 1.8, Y1, 6.75, 'yakisugi', {});
   // living double-height: concrete above the glass head is the roof; west face of the living void
   // ---- partitions
-  wallX(-8.75, -5.2, 2.1, 2.3, Y0, LV.F1_CEIL, [{ a0: -6.4, a1: -5.5, b0: F1, b1: F1 + 2.15 }], 'plaster', {});         // master | bath
+  wallX(-8.75, -5.2, 2.1, 2.3, Y0, LV.F1_CEIL, [], 'plaster', {});                                                       // master | bath
   wallZ(2.2, 6.45, -5.3, -5.1, Y0, LV.F1_CEIL, [{ a0: 2.6, a1: 3.5, b0: F1, b1: F1 + 2.15 }], 'plaster', {});            // bath | wardrobe
   wallZ(2.5, 6.45, -3.1, -2.9, Y0, LV.F1_CEIL, [{ a0: 3.0, a1: 4.6, b0: F1, b1: F1 + 2.2 }], 'plaster', {});             // wardrobe | lounge
-  wallX(-5.2, -3.0, 2.1, 2.3, Y0, LV.F1_CEIL, [{ a0: -4.6, a1: -3.4, b0: F1, b1: F1 + 2.2 }], 'plaster', {});            // master | wardrobe
+  wallX(-5.2, -3.0, 2.1, 2.3, Y0, LV.F1_CEIL, [{ a0: -4.3, a1: -3.45, b0: F1, b1: F1 + 2.2 }], 'plaster', {});           // master | wardrobe
   wallZ(-5.8, -2.2, -3.1, -2.9, Y0, LV.F1_CEIL, [{ a0: -5.75, a1: -4.95, b0: F1, b1: F1 + 2.2 }], 'plaster', {});        // master | corridor
   wallX(-2.9, 1.8, -4.95, -4.85, Y0, LV.F1_CEIL, [{ a0: -0.4, a1: 0.9, b0: F1, b1: F1 + 2.0 }], 'plaster', {});          // corridor | washitsu
   wallZ(-5.8, -2.2, 1.8, 2.0, Y0, LV.F1_CEIL, [{ a0: -5.75, a1: -4.95, b0: F1, b1: F1 + 2.2 }], 'plaster', {});          // washitsu+corridor | library
@@ -2093,7 +2098,7 @@ function downlight(x, y, z, lm = 1.6, o = {}) {
   const L = addLight(Object.assign({ type: 0, pos: [x, y - 0.03, z], lm, cone: 0.72, size: 0.06 }, o));
   const trim = new THREE.CircleGeometry(0.045, 20).rotateX(Math.PI / 2); place(trim, x, y - 0.002, z);
   addGeo(o.group === 1 ? 'emissiveGarage' : 'emissiveWarm', trim, { cast: false, receive: false });
-  const ring = new THREE.RingGeometry(0.045, 0.06, 20).rotateX(Math.PI / 2); place(ring, x, y - 0.001, z);
+  const ring = new THREE.RingGeometry(0.045, 0.06, 20).rotateX(Math.PI / 2); place(ring, x, y - 0.004, z);
   addGeo('blackSteel', ring, { cast: false });
   return L;
 }
@@ -2123,6 +2128,7 @@ function buildLuminaires() {
   addLight({ type: 1, pos: [-6.6, 4.6, -1.9], kelvin: 2400, lm: 0.45, size: 0.15 });                                        // bedside globes
   addLight({ type: 1, pos: [-5.2, 4.6, -1.9], kelvin: 2400, lm: 0.45, size: 0.15 });
   downlight(-7.0, C1, 3.4, 1.0); downlight(-7.0, C1, 5.4, 1.0);
+  downlight(-3.85, C1, 3.1, 1.1); downlight(-3.85, C1, 5.3, 1.1);                                                          // wardrobe passage
   downlight(-1.6, C1, 4.5, 1.0); downlight(0.6, C1, 4.5, 1.0);
   addLight({ type: 1, pos: [8.1, 0.45, 5.1], kelvin: 1900, lm: 1.4, size: 0.3, group: 2, gate: [1.8, -0.3, 0.8, 8.7, 6.3, 6.2] });  // hearth
 }
@@ -2288,8 +2294,13 @@ function buildInteriors() {
   bx('brass', tb.x - 1.1, 1.82, tb.z - 0.04, tb.x + 1.1, 1.86, tb.z + 0.04, { room: 'kitchen' });
   bx('emissiveWarm', tb.x - 1.06, 1.79, tb.z - 0.03, tb.x + 1.06, 1.82, tb.z + 0.03, { room: 'kitchen', cast: false, receive: false });
   for (const dx of [-0.9, 0.9]) cyl('brass', 0.003, 0.003, LV.GF_CEIL - 1.86, tb.x + dx, 1.86, tb.z, 6, { room: 'kitchen', cast: false });
-  // concealed full-height cabinetry under the stair run (east end)
-  bx('walnutTri', 7.35, 0, -1.8, 8.7, 2.1, 0.8, { room: 'kitchen' });
+  // low walnut sideboard tucked under the flight: it stays below the lowest tread soffit in this run (1.49 m)
+  bx('walnutTri', 7.5, 0.06, -1.75, 8.68, 1.32, 0.75, { room: 'kitchen' });
+  bx('paintBlack', 7.52, 0.0, -1.73, 8.66, 0.06, 0.73, { room: 'kitchen' });
+  bx('concreteTop', 7.47, 1.32, -1.78, 8.7, 1.37, 0.78, { room: 'kitchen' });
+  for (let z = -1.75 + 0.6; z < 0.75; z += 0.6) bx('paintBlack', 7.497, 0.1, z - 0.003, 7.501, 1.3, z + 0.003, { room: 'kitchen', cast: false });
+  lathe('ceramicWhite', [[0, 0], [0.06, 0], [0.11, 0.14], [0.09, 0.28], [0.045, 0.36], [0.05, 0.4], [0, 0.4]], 8.1, 1.37, -0.9, 28, { room: 'kitchen' });
+  WALLS.push({ x0: 7.47, z0: -1.78, x1: 8.7, z1: 0.78, y0: 0, y1: 1.37 });
   /* ---------- STUDY ---------- */
   bx('oak', -2.5, 0.72, -5.8, 1.3, 0.76, -5.2, { room: 'study' });
   for (const x of [-2.45, 1.25]) bx('oak', x - 0.02, 0, -5.78, x + 0.02, 0.72, -5.22, { room: 'study' });
@@ -2369,16 +2380,32 @@ function buildInteriors() {
   bx('jute', -8.3, F1, -1.2, -5.4, F1 + 0.012, 1.4, { room: 'master', cast: false });
   rb('smokedOak', 1.4, 0.42, 0.45, 0.02, -6.9, F1, -0.85, 0, { room: 'master' });
   WALLS.push({ x0: -8.0, z0: -1.1, x1: -5.8, z1: 2.1, y0: F1, y1: F1 + 0.7 });
-  // walk-in wardrobe: backlit fluted glass doors
-  for (let z = 2.45; z < 6.3; z += 0.6) { bx('glassFrosted', -5.08, F1 + 0.05, z, -5.06, LV.F1_CEIL - 0.05, z + 0.58, { room: 'wardrobe', layer: LAYER.GLASS, tag: 'glass', cast: false }); }
-  bx('emissiveWarm', -5.1, F1 + 0.05, 2.4, -5.095, LV.F1_CEIL - 0.05, 6.35, { room: 'wardrobe', cast: false, receive: false });
+  // walk-in wardrobe: smoked-oak carcass along the west wall (clear of the bath doorway), reeded bronze-glass
+  // fronts, a dim warm wash inside over hanging linen and wool
+  const WD = { x0: -5.1, x1: -4.5, z0: 3.75, z1: 6.35, y1: F1 + 2.55 };
+  bx('smokedOak', WD.x0, F1, WD.z0, WD.x1, F1 + 0.08, WD.z1, { room: 'wardrobe' });                       // plinth
+  bx('smokedOak', WD.x0, WD.y1, WD.z0, WD.x1, WD.y1 + 0.04, WD.z1, { room: 'wardrobe' });                 // top
+  for (const z of [WD.z0, WD.z0 + 1.3, WD.z1 - 0.03]) bx('smokedOak', WD.x0, F1 + 0.08, z, WD.x1, WD.y1, z + 0.03, { room: 'wardrobe' });
+  bx('smokedOak', WD.x0, F1 + 0.08, WD.z0, WD.x0 + 0.02, WD.y1, WD.z1, { room: 'wardrobe' });            // back panel, 2 cm off the wall
+  cyl('bronze', 0.012, 0.012, WD.z1 - WD.z0 - 0.1, WD.x0 + 0.3, WD.y1 - 0.32, (WD.z0 + WD.z1) / 2, 10, { room: 'wardrobe', rx: Math.PI / 2 });
+  { const R = mulberry32(5); const cols = ['linenFlax', 'linen', 'leatherBlack', 'boucle', 'paintBlack', 'linenFlax'];
+    for (let z = WD.z0 + 0.12; z < WD.z1 - 0.1; z += 0.07 + R() * 0.05) {
+      const len = 0.75 + R() * 0.55;
+      bx(cols[Math.floor(R() * cols.length)], WD.x0 + 0.08, WD.y1 - 0.33 - len, z, WD.x0 + 0.52, WD.y1 - 0.34, z + 0.025 + R() * 0.02, { room: 'wardrobe', cast: false });
+    } }
+  bx('emissiveWardrobe', WD.x0 + 0.05, WD.y1 - 0.025, WD.z0 + 0.05, WD.x0 + 0.1, WD.y1 - 0.012, WD.z1 - 0.05, { room: 'wardrobe', cast: false, receive: false });
+  for (let z = WD.z0 + 0.03; z < WD.z1 - 0.05; z += 0.65) {
+    bx('glassReeded', WD.x1 - 0.004, F1 + 0.09, z + 0.01, WD.x1 + 0.008, WD.y1 - 0.01, z + 0.635, { room: 'wardrobe', layer: LAYER.GLASS, tag: 'glass', cast: false });
+    bx('bronze', WD.x1 + 0.008, F1 + 0.95, z + 0.58, WD.x1 + 0.03, F1 + 1.55, z + 0.6, { room: 'wardrobe' });
+  }
+  addLight({ type: 1, pos: [WD.x0 + 0.3, WD.y1 - 0.1, (WD.z0 + WD.z1) / 2], kelvin: 2700, lm: 0.08, size: 0.4, gate: [WD.x0, F1, WD.z0, WD.x1 + 1.2, WD.y1, WD.z1] });
   /* ---------- 1F HINOKI BATH ---------- */
   const tub = { x0: -8.5, x1: -6.7, z0: 4.5, z1: 5.95 };
-  bx('hinokiUV', tub.x0, F1, tub.z0, tub.x1, F1 + 0.6, tub.z0 + 0.05, { room: 'bath' });
-  bx('hinokiUV', tub.x0, F1, tub.z1 - 0.05, tub.x1, F1 + 0.6, tub.z1, { room: 'bath' });
-  bx('hinokiUV', tub.x0, F1, tub.z0, tub.x0 + 0.05, F1 + 0.6, tub.z1, { room: 'bath' });
-  bx('hinokiUV', tub.x1 - 0.05, F1, tub.z0, tub.x1, F1 + 0.6, tub.z1, { room: 'bath' });
-  bx('hinokiUV', tub.x0 + 0.05, F1, tub.z0 + 0.05, tub.x1 - 0.05, F1 + 0.08, tub.z1 - 0.05, { room: 'bath' });
+  bx('hinokiTub', tub.x0, F1, tub.z0, tub.x1, F1 + 0.6, tub.z0 + 0.05, { room: 'bath' });
+  bx('hinokiTub', tub.x0, F1, tub.z1 - 0.05, tub.x1, F1 + 0.6, tub.z1, { room: 'bath' });
+  bx('hinokiTub', tub.x0, F1, tub.z0, tub.x0 + 0.05, F1 + 0.6, tub.z1, { room: 'bath' });
+  bx('hinokiTub', tub.x1 - 0.05, F1, tub.z0, tub.x1, F1 + 0.6, tub.z1, { room: 'bath' });
+  bx('hinokiTub', tub.x0 + 0.05, F1, tub.z0 + 0.05, tub.x1 - 0.05, F1 + 0.08, tub.z1 - 0.05, { room: 'bath' });
   DYN.tubWater = { x0: tub.x0 + 0.05, x1: tub.x1 - 0.05, z0: tub.z0 + 0.05, z1: tub.z1 - 0.05, y: 3.75 };
   WALLS.push({ x0: tub.x0, z0: tub.z0, x1: tub.x1, z1: tub.z1, y0: F1, y1: F1 + 0.6 });
   // stone double vanity + backlit round mirror, brass rain shower
@@ -2474,7 +2501,7 @@ function leafAtlas(kind) {
   return canvasTex(cv, true);
 }
 function leafMaterial(map, room, o = {}) {
-  const m = new THREE.MeshPhysicalMaterial({ map, alphaTest: 0.45, side: THREE.DoubleSide, roughness: o.rough ?? 0.55, sheen: 0.3, sheenRoughness: 0.5, sheenColor: 0xffffff, envMapIntensity: 0.8 });
+  const m = new THREE.MeshPhysicalMaterial({ map, alphaTest: 0.45, alphaToCoverage: true, side: THREE.DoubleSide, roughness: o.rough ?? 0.55, sheen: 0.3, sheenRoughness: 0.5, sheenColor: 0xffffff, envMapIntensity: 0.8 });
   patchMaterial(m, { room, exterior: true, foliage: true, leaf: true, transl: o.transl ?? 0.8, keepMap: true, windW: o.windW || '1.0', extraKey: 'leaf',
     uniforms: {}, });
   const prevOBC = m.onBeforeCompile;
@@ -2660,6 +2687,55 @@ function buildSliders() {
   DYN.slide = S;
 }
 
+/* --- Interior pocket doors (walnut; a paper fusuma for the washitsu): they glide into the wall on a damped
+   spring as you walk up, and close behind you, with a rail sound and a soft stop */
+const DOORS = [];
+function pocketDoor(o) {
+  const len = o.a1 - o.a0, h = o.y1 - o.y0, t = 0.034, g = new THREE.Group();
+  const along = o.axis === 'x' ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 0, 1);
+  const box = (w, hh, d) => (o.axis === 'x' ? new THREE.BoxGeometry(w, hh, d) : new THREE.BoxGeometry(d, hh, w));
+  const lay = ROOM[o.room].layer;
+  if (o.style === 'fusuma') {
+    dynMesh(box(len + 0.02, h - 0.01, t * 0.8), 'linenFlax', o.room, g, { layer: lay });
+    for (const [w, hh, a, y] of [[len + 0.03, 0.025, 0, (h - 0.01) / 2 - 0.012], [len + 0.03, 0.025, 0, -(h - 0.01) / 2 + 0.012], [0.025, h - 0.01, (len + 0.02) / 2, 0], [0.025, h - 0.01, -(len + 0.02) / 2, 0]]) {
+      const m = dynMesh(box(w, hh, t), 'lacquer', o.room, g, { layer: lay }); m.position.addScaledVector(along, a); m.position.y = y;
+    }
+    for (const sd of [-1, 1]) { const pull = dynMesh(new THREE.CylinderGeometry(0.03, 0.03, 0.006, 20).rotateX(Math.PI / 2), 'bronze', o.room, g, { layer: lay });
+      if (o.axis === 'z') pull.rotation.y = Math.PI / 2; pull.position.addScaledVector(along, -o.dir * (len / 2 - 0.09)); pull.position.y = 0.0; pull.position.add(o.axis === 'x' ? new THREE.Vector3(0, 0, sd * t * 0.5) : new THREE.Vector3(sd * t * 0.5, 0, 0)); }
+  } else {
+    dynMesh(box(len + 0.02, h - 0.01, t), 'walnut', o.room, g, { layer: lay });
+    for (const sd of [-1, 1]) { const pull = dynMesh(box(0.018, 0.42, 0.008), 'bronze', o.room, g, { layer: lay });
+      pull.position.addScaledVector(along, -o.dir * (len / 2 - 0.07)); pull.position.add(o.axis === 'x' ? new THREE.Vector3(0, 0, sd * (t / 2 + 0.002)) : new THREE.Vector3(sd * (t / 2 + 0.002), 0, 0)); }
+  }
+  const base = o.axis === 'x' ? new THREE.Vector3((o.a0 + o.a1) / 2, o.y0 + h / 2, o.c) : new THREE.Vector3(o.c, o.y0 + h / 2, (o.a0 + o.a1) / 2);
+  g.position.copy(base); scene.add(g);
+  DOORS.push({ g, base, slide: along.clone().multiplyScalar(o.dir), travel: len + 0.02, o: 0, v: 0, target: 0, floor: o.floor, cx: base.x, cz: base.z, moving: false });
+}
+function buildDoors() {
+  const F1 = LV.F1;
+  pocketDoor({ axis: 'z', c: 1.9, a0: -3.5, a1: -2.6, y0: 0, y1: 2.3, dir: -1, room: 'kitchen', floor: 0 });             // study | kitchen
+  pocketDoor({ axis: 'z', c: -5.2, a0: 2.6, a1: 3.5, y0: F1, y1: F1 + 2.15, dir: 1, room: 'bath', floor: F1 });          // bath | wardrobe
+  pocketDoor({ axis: 'z', c: -3.0, a0: 3.0, a1: 4.6, y0: F1, y1: F1 + 2.2, dir: 1, room: 'lounge', floor: F1 });         // wardrobe | lounge
+  pocketDoor({ axis: 'x', c: 2.2, a0: -4.3, a1: -3.45, y0: F1, y1: F1 + 2.2, dir: -1, room: 'master', floor: F1 });      // master | wardrobe
+  pocketDoor({ axis: 'z', c: -3.0, a0: -5.75, a1: -4.95, y0: F1, y1: F1 + 2.2, dir: 1, room: 'master', floor: F1 });     // master | corridor
+  pocketDoor({ axis: 'x', c: -4.9, a0: -0.4, a1: 0.9, y0: F1, y1: F1 + 2.0, dir: -1, room: 'washitsu', floor: F1, style: 'fusuma' });   // corridor | washitsu
+  pocketDoor({ axis: 'z', c: 1.9, a0: -5.75, a1: -4.95, y0: F1, y1: F1 + 2.2, dir: 1, room: 'mezz', floor: F1 });        // corridor | library
+}
+function updateDoors(dt) {
+  const p = camera.position, walking = P.cameraMode === 'Walkthrough';
+  for (const d of DOORS) {
+    const dist = Math.hypot(p.x - d.cx, p.z - d.cz), sameFloor = Math.abs(p.y - 1.62 - d.floor) < 1.3;
+    const want = walking && sameFloor && dist < (d.target ? 2.5 : 1.75) ? 1 : 0;
+    if (want !== d.target) { d.target = want; if (dist < 6) blip({ ff: 1300, q: 0.5, vol: 0.06, dur: 0.75, att: 0.15 }); d.knock = true; }
+    const w = 7.5, acc = w * w * (d.target - d.o) - 2 * w * d.v;
+    d.v += acc * dt; d.o += d.v * dt;
+    if (d.knock && Math.abs(d.target - d.o) < 0.01 && Math.abs(d.v) < 0.05) { d.knock = false; if (dist < 6) blip({ ff: 260, q: 2, vol: 0.08, dur: 0.12 }); }
+    const moving = Math.abs(d.v) > 1e-3;
+    if (moving || d.moving) { d.g.position.copy(d.base).addScaledVector(d.slide, clamp(d.o, -0.01, 1.0) * d.travel); SHADOW.dirty = SHADOW.dirty || moving; }
+    d.moving = moving;
+  }
+}
+
 /* --- Fire, steam, rain and snow (GPU particles), tub water */
 const FX = {};
 function buildFX() {
@@ -2687,7 +2763,7 @@ function buildFX() {
   }
   // hinoki bath water: dark glassy surface with slow ripples (probe reflections)
   const T = DYN.tubWater;
-  const wm = patchMaterial(new THREE.MeshPhysicalMaterial({ color: 0x1a2a22, roughness: 0.02, metalness: 0, transparent: true, opacity: 0.5, ior: 1.33, envMapIntensity: 1.3, specularIntensity: 1 }), {
+  const wm = patchMaterial(new THREE.MeshPhysicalMaterial({ color: 0x08120f, roughness: 0.015, metalness: 0, transparent: true, opacity: 0.42, ior: 1.33, envMapIntensity: 1.0, specularIntensity: 1 }), {
     room: 'bath', extraKey: 'tub', fsNormal: `{ vec2 p = vWP.xz * 6.0; float t = uTime; vec3 nn = normalize(vec3(sin(p.x * 1.3 + t * 1.1) * 0.04 + sin(p.y * 2.1 - t * 0.8) * 0.03, 1.0, cos(p.x * 1.7 - t * 0.9) * 0.03 + sin(p.y * 1.4 + t * 1.3) * 0.04)); normal = normalize((viewMatrix * vec4(nn, 0.0)).xyz); }` });
   const tw = new THREE.Mesh(new THREE.PlaneGeometry(T.x1 - T.x0, T.z1 - T.z0).rotateX(-Math.PI / 2), wm);
   tw.position.set((T.x0 + T.x1) / 2, T.y, (T.z0 + T.z1) / 2); tw.layers.set(LAYER.FIRST_FLOOR); tw.renderOrder = 1; scene.add(tw);
@@ -2745,7 +2821,7 @@ function buildFX() {
         gl_PointSize = (180.0 + 260.0 * life) * uScale / max(-mv.z, 0.3);
       }`,
     fragmentShader: `uniform vec3 uLight; uniform float uAmt; varying float vA;
-      void main(){ vec2 q = gl_PointCoord - 0.5; float a = smoothstep(0.5, 0.0, length(q)); a = a * a * 0.05 * vA * uAmt; gl_FragColor = vec4(uLight, a); }`,
+      void main(){ vec2 q = gl_PointCoord - 0.5; float a = smoothstep(0.5, 0.0, length(q)); a = a * a * 0.022 * vA * uAmt; gl_FragColor = vec4(uLight, a); }`,
   });
   const steam = new THREE.Points(sg, steamMat); steam.frustumCulled = false; steam.layers.set(LAYER.FIRST_FLOOR); steam.renderOrder = 4; scene.add(steam);
   FX.steam = steamMat;
@@ -2815,12 +2891,13 @@ varying vec3 vWP;
 ${GLSL_NOISE}
 float hgt(vec2 p){
   float t = uTime;
+  float hf = 1.0 - smoothstep(7.0, 22.0, length(cameraPosition - vWP));   // fine ripples fade before they sparkle
   float h = 0.0;
   h += sin(dot(p, vec2(0.8, 0.6)) * 2.1 + t * 1.1) * 0.0022;
   h += sin(dot(p, vec2(-0.5, 0.86)) * 3.7 + t * 1.6) * 0.0014;
   h += sin(dot(p, vec2(0.97, -0.24)) * 6.3 + t * 2.3) * 0.0008;
   h += (vnoise(p * 9.0 + vec2(t * 0.6, t * 0.4)) - 0.5) * 0.0012 * (0.3 + uWind * 2.0);
-  h += (vnoise(p * 23.0 - vec2(t * 0.9, -t * 0.7)) - 0.5) * 0.0005 * (0.3 + uWind * 2.0);
+  h += (vnoise(p * 23.0 - vec2(t * 0.9, -t * 0.7)) - 0.5) * 0.0005 * (0.3 + uWind * 2.0) * hf;
   if (uRippleOn > 0.5) { vec2 ruv = (p - uRippleXf.xy) / uRippleXf.zw; if (all(greaterThan(ruv, vec2(0.0))) && all(lessThan(ruv, vec2(1.0)))) h += texture2D(tRipple, ruv).r; }
   // tsukubai: concentric rings from the kakehi drip
   float dr = length(p - uDrip.xy);
@@ -3202,7 +3279,7 @@ void main(){
   vec3 rd = wp - uCam; float L = min(length(rd), 32.0); rd = normalize(rd);
   const int N = 28;
   float stepL = L / float(N);
-  float j = h12(gl_FragCoord.xy + fract(uTime * 7.31) * 97.0);
+  float j = h12(floor(gl_FragCoord.xy));                     // static dither: no frame-to-frame crawl
   float acc = 0.0, dens = 0.0;
   for (int i = 0; i < N; i++) {
     vec3 p = uCam + rd * (float(i) + j) * stepL;
@@ -3307,7 +3384,7 @@ function renderGodRays() {
   const fog = WX.cur ? WX.cur.fog : 0.003;
   u.uDensity.value = (0.012 + fog * 1.6) * (P.godRays ? 1 : 0);
   u.uSunCol.value.copy(SH.uSunColor.value);
-  u.uSteamBox.value = 5 * (WX.cur ? WX.cur.steam : 1);
+  u.uSteamBox.value = 1.6 * (WX.cur ? WX.cur.steam : 1);
   godPass.render(POST.god);
   bilatPass.uniforms.tSrc.value = POST.god.texture; bilatPass.uniforms.uTexel.value.set(1 / POST.god.width, 1 / POST.god.height);
   return POST.god.texture;
@@ -3599,7 +3676,8 @@ function loadCar() {
     const loader = new GLTFLoader(); loader.setDRACOLoader(draco);
     const fail = (e) => { console.warn('Car model unavailable, using the covered fallback', e); buildCoveredCar(); resolve(false); };
     const timer = setTimeout(() => fail('timeout'), 20000);
-    loader.load(CAR_URL + 'ferrari.glb', (gltf) => {
+    const url = new URLSearchParams(location.search).has('nocar') ? 'https://invalid.invalid/nope.glb' : CAR_URL + 'ferrari.glb';
+    loader.load(url, (gltf) => {
       clearTimeout(timer);
       const car = gltf.scene;
       car.traverse((o) => { if (o.isMesh) o.material = assignCarMaterial(o); });
@@ -3616,19 +3694,62 @@ function loadCar() {
   });
 }
 function buildCoveredCar() {
-  // offline fallback: a grand tourer silhouette under a fitted satin car cover
-  const g = roundedBox(1.95, 1.0, 4.6, 0.35, 6);
-  const p = g.attributes.position;
-  for (let i = 0; i < p.count; i++) {
-    let x = p.getX(i), y = p.getY(i), z = p.getZ(i);
-    const roof = Math.exp(-Math.pow((z + 0.15) / 1.0, 2)) * 0.45;
-    y = y > 0 ? y * (0.35 + roof) + 0.05 * Math.sin(x * 9 + z * 3) * 0.2 : y;
-    x *= 1 - 0.12 * Math.max(0, y);
-    p.setXYZ(i, x, y + 0.62, z);
+  // offline fallback: a grand-tourer silhouette under a fitted satin car cover (lofted, draped to a hem, tyres peeking out)
+  const L = 4.55, NS = 96, NT = 72, yMid = 0.5, hem = 0.17;
+  const prof = (s) => [
+    crTable([[0, 0.56], [0.07, 0.74], [0.3, 0.86], [0.43, 1.1], [0.58, 1.22], [0.76, 1.1], [0.92, 0.98], [1, 0.74]], s),   // crown height
+    crTable([[0, 0.5], [0.05, 0.84], [0.2, 0.95], [0.5, 0.94], [0.78, 0.99], [0.93, 0.92], [1, 0.58]], s),               // half width
+  ];
+  const pos = [], idx = [];
+  for (let i = 0; i <= NS; i++) {
+    const s = i / NS, z = (s - 0.5) * L, [h, w] = prof(s);
+    for (let j = 0; j <= NT; j++) {
+      const t = j / NT * 2 - 1;                   // -1 left hem .. 0 crown .. +1 right hem
+      const a = Math.abs(t), side = Math.sign(t) || 1;
+      let x, y;
+      if (a < 0.62) {                             // superellipse over the top
+        const phi = (a / 0.62) * Math.PI / 2;
+        x = side * w * Math.pow(Math.sin(phi), 0.45);
+        y = yMid + (h - yMid) * Math.pow(Math.cos(phi), 0.55);
+      } else {                                    // skirt hanging to the hem, slightly tucked
+        const k = (a - 0.62) / 0.38;
+        x = side * w * (1 - 0.035 * k * k);
+        y = lerp(yMid, hem, k);
+      }
+      // body cues showing through the cover: wheel-arch bulges, hood dipping between the fenders, door mirrors
+      const arch = 0.065 * (Math.exp(-(((s - 0.2) / 0.075) ** 2)) + Math.exp(-(((s - 0.79) / 0.075) ** 2))) * smoothstep(0.22, 0.5, y) * (1 - smoothstep(0.82, 1.02, y));
+      x += side * arch;
+      if (a < 0.62 && s < 0.42) y -= 0.075 * (1 - smoothstep(0.26, 0.42, s)) * Math.max(0, 1 - 1.7 * (x / w) ** 2);
+      x += side * 0.13 * Math.exp(-(((s - 0.43) / 0.028) ** 2)) * Math.exp(-(((y - 0.97) / 0.05) ** 2));
+      // fabric: drape folds on the skirt, soft wrinkles over the panels, tension lines from the mirrors
+      const skirt = smoothstep(yMid + 0.05, hem, y);
+      const fold = Math.sin(z * 7.3 + Math.sin(z * 2.1) * 2.0) * 0.012 * skirt + Math.sin(z * 17 + y * 6) * 0.004 * skirt;
+      const wr = (fbm3(x * 3.1, y * 3.1, z * 3.1, 3, 41) - 0.5) * 0.012;
+      const n = side * (1 - Math.abs(Math.cos(Math.min(a, 0.62) / 0.62 * Math.PI / 2))) ;
+      pos.push(x + side * (fold + wr * 0.6), y + wr * 0.5 * (1 - skirt), z);
+    }
   }
-  g.computeVertexNormals();
-  const m = new THREE.Mesh(g, patchMaterial(new THREE.MeshPhysicalMaterial({ color: 0x2b2d33, roughness: 0.45, sheen: 1, sheenRoughness: 0.35, sheenColor: 0x9aa0b0 }), { room: 'garage', extraKey: 'cover' }));
-  const grp = new THREE.Group(); grp.add(m); CAR.group = grp; placeCar(grp);
+  for (let i = 0; i < NS; i++) for (let j = 0; j < NT; j++) {
+    const a = i * (NT + 1) + j, b = a + 1, c = a + NT + 1, d = c + 1;
+    idx.push(a, c, b, b, c, d);
+  }
+  // end caps (front fascia and tail) closed with fans to a centre point
+  for (const [i, flip] of [[0, true], [NS, false]]) {
+    const ci = pos.length / 3, s = i / NS, [h] = prof(s);
+    pos.push(0, (h + hem) * 0.5, (s - 0.5) * L + (flip ? -0.06 : 0.06));
+    for (let j = 0; j < NT; j++) { const a = i * (NT + 1) + j; if (flip) idx.push(ci, a, a + 1); else idx.push(ci, a + 1, a); }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(pos.length / 3 * 2), 2));
+  const cover = patchMaterial(new THREE.MeshPhysicalMaterial({ color: 0x15161a, roughness: 0.62, sheen: 0.55, sheenRoughness: 0.38, sheenColor: 0x5a6070, side: THREE.DoubleSide }), { room: 'garage', extraKey: 'cover' });
+  const grp = new THREE.Group();
+  const m = new THREE.Mesh(g, cover); grp.add(m);
+  for (const [x, z] of [[-0.83, -1.36], [0.83, -1.36], [-0.83, 1.32], [0.83, 1.32]]) {
+    const tyre = new THREE.Mesh(new THREE.CylinderGeometry(0.345, 0.345, 0.255, 40).rotateZ(Math.PI / 2), CAR.mats.rubber);
+    tyre.position.set(x * 0.98, 0.345, z); grp.add(tyre);
+  }
+  CAR.group = grp; placeCar(grp);
 }
 function setCarPaint(name) {
   P.carPaint = name; CAR.paintIdx = PAINT_ORDER.indexOf(name);
@@ -3659,6 +3780,7 @@ function updateWorld(dt, t, cdt) {
   if (DYN.frontDoor) { const F = DYN.frontDoor; F.open += (F.target - F.open) * (1 - Math.exp(-cdt * 3)); F.g.rotation.y = -F.open * 1.35; }
   if (DYN.louvres) { const a = lerp(0.05, 1.35, P.louverTilt); for (const l of DYN.louvres) if (l.userData.side) l.rotation.z = a; else l.rotation.x = a; }
   if (DYN.slide) DYN.slide.update(cdt);
+  updateDoors(cdt);
   updateFX(dt, t);
   stepRipples(dt);
   if (DYN.tsukubai && waterMat) {   // a drop every ~2.4 s from the bamboo spout
@@ -3806,6 +3928,7 @@ function updateDrone(dt) {
   camera.lookAt(DRONE.tx, DRONE.ty, DRONE.tz);
 }
 function onCameraMode() {
+  if (P.cameraMode !== 'Cinematic') { $('caption').style.opacity = 0; TOUR.cap = ''; }
   const b = $('tb-cam'); if (b) b.querySelector('.lbl').textContent = P.cameraMode === 'Cinematic' ? 'Film tour' : P.cameraMode === 'Walkthrough' ? 'Walkthrough' : 'Drone maquette';
   $('crosshair').classList.toggle('on', P.cameraMode === 'Walkthrough');
   if (P.cameraMode === 'Walkthrough') { WALK.init = false; }
@@ -4094,7 +4217,7 @@ function frame() {
   if (ENV.dirty && ENV.timer <= 0) { updateEnv(); ENV.timer = 0.25; }
   tickProbes();
   SHADOW.frame++;
-  if (!DBG.noShadow && (SHADOW.dirty || SHADOW.frame % (P.quality === 'High' ? 3 : 5) === 0)) {
+  if (!DBG.noShadow && (SHADOW.dirty || SHADOW.frame % (P.quality === 'High' ? 2 : 4) === 0)) {
     SHADOW.dirty = false;
     renderer.shadowMap.needsUpdate = true;
     renderer.setRenderTarget(RT.tiny); renderer.render(scene, shadowCam);
@@ -4130,6 +4253,7 @@ async function init() {
     applyWeatherInstant(P.weather);
     EMIS_MATS.emissiveWarm = emissiveMat(2700, 7, 0);
     EMIS_MATS.emissiveGarage = emissiveMat(5000, 9, 1);
+    EMIS_MATS.emissiveWardrobe = emissiveMat(2600, 1.6, 0);
     await progress(0.35, 'Pouring the site and the reflecting pool');
     buildSite();
     buildStones();
@@ -4144,6 +4268,7 @@ async function init() {
     await progress(0.66, 'Planting the maple, bamboo and pines');
     buildGarden();
     buildSliders();
+    buildDoors();
     {   // stones the gravel is raked around
       const rk = GARDEN.rakeRocks.concat([[-1.6, 9.6, 1.25], [-2.4, 10.4, 0.7], [-0.5, 10.6, 0.6], [6.5, 10.3, 1.1], [-1.1, 8.55, 0.4], [9.7, 10.9, 0.4]]);
       rk.slice(0, 12).forEach((r, i) => SH.uRake.value[i].set(r[0], r[1], r[2]));
